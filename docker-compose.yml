@@ -1,0 +1,8 @@
+services:
+  test:
+    build: .
+    command: uv run pytest -v
+
+  lint:
+    build: .
+    command: sh -c "uv run ruff check . && uv run ruff format . --check"
