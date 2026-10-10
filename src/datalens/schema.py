@@ -6,13 +6,13 @@ that can be safely sent to an LLM. It never sends raw file contents.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
+
+from datalens.serialization import sanitize_for_json
 
 # --- Limits and constants ---------------------------------------------------
 
@@ -77,30 +77,8 @@ def validate_file_size(path: Path) -> None:
 # --- Internal helpers -------------------------------------------------------
 
 
-def _sanitize_value(value: Any) -> Any:
-    """Convert a pandas/numpy scalar to a JSON-safe Python native.
-
-    LLM payloads must be JSON-serializable and platform-independent.
-    numpy ints, pandas Timestamps, and NaN all need explicit handling.
-    """
-    if value is None:
-        return None
-    if isinstance(value, float) and math.isnan(value):
-        return None
-    if isinstance(value, (np.integer,)):
-        return int(value)
-    if isinstance(value, (np.floating,)):
-        return float(value)
-    if isinstance(value, (np.bool_,)):
-        return bool(value)
-    if isinstance(value, (str, int, float, bool)):
-        return value
-    # pandas Timestamp, Timedelta, Decimal, etc. — stringify as a fallback.
-    return str(value)
-
-
 def _sanitize_row(row: dict[str, Any]) -> dict[str, Any]:
-    return {str(k): _sanitize_value(v) for k, v in row.items()}
+    return {str(k): sanitize_for_json(v) for k, v in row.items()}
 
 
 # --- Public API -------------------------------------------------------------
