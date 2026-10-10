@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Env / secrets - NEVER commit
+.env
+.env.local
+.env.*.local
+
+# User-uploaded data - NEVER commit
+data/*
+!data/.gitkeep
+
+# Build artifacts
+dist/
+build/
+wheels/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
