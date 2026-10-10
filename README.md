@@ -24,3 +24,4 @@ cd datalens
 uv sync
 cp .env.example .env   # fill values when needed
 uv run pytest
+

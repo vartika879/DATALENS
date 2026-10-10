@@ -1,8 +1,16 @@
 services:
   test:
     build: .
-    command: uv run pytest -v
+    command: /app/.venv/bin/pytest -v
 
   lint:
     build: .
-    command: sh -c "uv run ruff check . && uv run ruff format . --check"
+    command: sh -c "/app/.venv/bin/ruff check . && /app/.venv/bin/ruff format . --check"
+
+  ui:
+    build: .
+    command: /app/.venv/bin/streamlit run app.py --server.address=0.0.0.0 --server.port=8501
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env

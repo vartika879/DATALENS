@@ -12,6 +12,7 @@ RUN uv sync --frozen --all-groups --no-install-project
 COPY src/ ./src/
 COPY tests/ ./tests/
 COPY README.md ./
+COPY app.py ./
 RUN uv sync --frozen --all-groups
 
 # Ownership appuser ko do — cache, venv sab likh sake
