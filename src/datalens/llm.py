@@ -1,40 +1,51 @@
 """Groq LLM client wrapper.
 
-Keeps all Groq-specific code in one place so the rest of the codebase
-depends only on `generate_code(schema, question) -> str`. Swapping providers
-later means changing only this file.
+Produces structured ``GeneratedCode`` objects. All Groq-specific code lives
+here so the rest of the codebase depends only on ``generate_code``.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from groq import Groq
+from pydantic import BaseModel, Field, ValidationError
 
 from datalens.config import get_settings
 from datalens.schema import DatasetSchema
 
 DEFAULT_MODEL = "openai/gpt-oss-20b"
 
-SYSTEM_PROMPT = """You are a pandas code generator.
-Given a CSV schema and a user question, respond ONLY with valid Python
-pandas code that answers the question.
-
-Rules:
-- The DataFrame is already loaded in a variable named `df`.
-- The last line must assign the final answer to a variable named `result`.
-- Do NOT include any explanation, markdown fences, or imports.
-- Only use pandas and numpy. Do not use os, sys, subprocess, or file I/O.
-"""
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
+_SYSTEM_PROMPT_FILE = "generate_code_v1.txt"
 
 
 class LLMError(Exception):
-    """Raised when the LLM call fails or returns an unusable response."""
+    """Raised when the LLM call fails or the response cannot be parsed."""
+
+
+class GeneratedCode(BaseModel):
+    """Structured output from the LLM.
+
+    ``self_reported_confidence`` is the model's own estimate and is NOT a
+    calibrated probability. Do not use it as ground truth.
+    """
+
+    code: str = Field(..., min_length=1)
+    explanation: str = Field(..., min_length=1)
+    self_reported_confidence: float = Field(..., ge=0.0, le=1.0)
+
+
+def _load_system_prompt(name: str = _SYSTEM_PROMPT_FILE) -> str:
+    """Load a system prompt file shipped with the package."""
+    path = _PROMPTS_DIR / name
+    if not path.is_file():
+        raise LLMError(f"Prompt file not found: {path}")
+    return path.read_text(encoding="utf-8")
 
 
 def _build_user_prompt(schema: DatasetSchema, question: str) -> str:
-    """Compose the user message from schema and question.
-
-    Kept as a separate function so it can be unit-tested without an API call.
-    """
+    """Compose the user message from schema and question."""
     columns_desc = "\n".join(
         f"- {c.name} ({c.dtype}), nulls: {c.null_count}/{schema.row_count}" for c in schema.columns
     )
@@ -51,11 +62,10 @@ def _build_user_prompt(schema: DatasetSchema, question: str) -> str:
 
 
 def _strip_code_fences(text: str) -> str:
-    """Remove ```python ... ``` fences if the model added them anyway."""
+    """Remove ```json ... ``` fences if the model added them anyway."""
     stripped = text.strip()
     if stripped.startswith("```"):
         lines = stripped.splitlines()
-        # drop first line (```python or ```) and last line (```)
         lines = lines[1:]
         if lines and lines[-1].strip().startswith("```"):
             lines = lines[:-1]
@@ -69,36 +79,38 @@ def generate_code(
     *,
     model: str = DEFAULT_MODEL,
     client: Groq | None = None,
-) -> str:
-    """Generate pandas code for a question about a CSV schema.
+) -> GeneratedCode:
+    """Generate structured pandas code for a question about a CSV schema.
 
     Args:
-        schema: The dataset schema (from `extract_schema`).
+        schema: The dataset schema (from ``extract_schema``).
         question: Natural-language question.
         model: Groq model name.
         client: Optional pre-built Groq client (for tests). If None, a new
             client is built using the API key from Settings.
 
     Returns:
-        The generated pandas code as a plain string.
+        A validated ``GeneratedCode`` object.
 
     Raises:
-        LLMError: On API failure or empty/malformed response.
+        LLMError: On API failure, empty response, or invalid JSON.
     """
     if client is None:
         settings = get_settings()
         client = Groq(api_key=settings.groq_api_key)
 
+    system_prompt = _load_system_prompt()
     user_prompt = _build_user_prompt(schema, question)
 
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.0,
+            response_format={"type": "json_object"},
         )
     except Exception as exc:  # noqa: BLE001 — provider SDKs raise varied types
         raise LLMError(f"Groq API call failed: {exc}") from exc
@@ -110,4 +122,9 @@ def generate_code(
     if not content or not content.strip():
         raise LLMError("LLM returned empty content")
 
-    return _strip_code_fences(content)
+    cleaned = _strip_code_fences(content)
+
+    try:
+        return GeneratedCode.model_validate_json(cleaned)
+    except ValidationError as exc:
+        raise LLMError(f"LLM returned invalid structured output: {exc}") from exc

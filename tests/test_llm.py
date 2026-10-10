@@ -1,23 +1,27 @@
-"""Tests for the Groq LLM wrapper.
+"""Tests for the Groq LLM wrapper (structured output).
 
-Real API calls are never made here — the Groq client is mocked.
+Real API calls are never made — the Groq client is mocked.
 """
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 from datalens.llm import (
-    SYSTEM_PROMPT,
+    GeneratedCode,
     LLMError,
     _build_user_prompt,
+    _load_system_prompt,
     _strip_code_fences,
     generate_code,
 )
 from datalens.schema import ColumnInfo, DatasetSchema
+
+# --- Fixtures ---------------------------------------------------------------
 
 
 @pytest.fixture
@@ -34,9 +38,34 @@ def sample_schema() -> DatasetSchema:
     )
 
 
+def _valid_payload() -> str:
+    return json.dumps(
+        {
+            "code": "result = df['sales'].mean()",
+            "explanation": "Mean of sales column",
+            "self_reported_confidence": 0.9,
+        }
+    )
+
+
 def _fake_response(content: str) -> SimpleNamespace:
     """Mimic the shape of a Groq chat completion response."""
     return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+
+# --- _load_system_prompt ----------------------------------------------------
+
+
+def test_load_system_prompt_returns_non_empty_text() -> None:
+    text = _load_system_prompt()
+    assert "pandas" in text.lower()
+    assert "json" in text.lower()
+    assert len(text) > 100
+
+
+def test_load_system_prompt_raises_on_missing_file() -> None:
+    with pytest.raises(LLMError, match="Prompt file not found"):
+        _load_system_prompt("does_not_exist.txt")
 
 
 # --- _build_user_prompt -----------------------------------------------------
@@ -55,49 +84,98 @@ def test_build_user_prompt_includes_schema_and_question(
 # --- _strip_code_fences -----------------------------------------------------
 
 
-def test_strip_code_fences_removes_python_fence() -> None:
-    raw = "```python\ndf.groupby('city').sum()\n```"
-    assert _strip_code_fences(raw) == "df.groupby('city').sum()"
+def test_strip_code_fences_removes_json_fence() -> None:
+    raw = '```json\n{"a": 1}\n```'
+    assert _strip_code_fences(raw) == '{"a": 1}'
 
 
-def test_strip_code_fences_leaves_plain_code_alone() -> None:
-    raw = "df.groupby('city').sum()"
+def test_strip_code_fences_leaves_plain_json_alone() -> None:
+    raw = '{"a": 1}'
     assert _strip_code_fences(raw) == raw
 
 
 # --- generate_code (mocked client) ------------------------------------------
 
 
-def test_generate_code_returns_model_content(sample_schema: DatasetSchema) -> None:
+def test_generate_code_returns_generated_code_model(
+    sample_schema: DatasetSchema,
+) -> None:
     client = MagicMock()
-    client.chat.completions.create.return_value = _fake_response("result = df['sales'].sum()")
+    client.chat.completions.create.return_value = _fake_response(_valid_payload())
 
-    code = generate_code(sample_schema, "total sales?", client=client)
+    result = generate_code(sample_schema, "mean sales?", client=client)
 
-    assert code == "result = df['sales'].sum()"
-    client.chat.completions.create.assert_called_once()
-    call_kwargs = client.chat.completions.create.call_args.kwargs
-    assert call_kwargs["model"] == "llama-3.3-70b-versatile"
-    assert call_kwargs["temperature"] == 0.0
-    assert call_kwargs["messages"][0]["content"] == SYSTEM_PROMPT
+    assert isinstance(result, GeneratedCode)
+    assert result.code == "result = df['sales'].mean()"
+    assert result.explanation == "Mean of sales column"
+    assert result.self_reported_confidence == pytest.approx(0.9)
 
 
-def test_generate_code_strips_fences(sample_schema: DatasetSchema) -> None:
+def test_generate_code_requests_json_response_format(
+    sample_schema: DatasetSchema,
+) -> None:
     client = MagicMock()
-    client.chat.completions.create.return_value = _fake_response(
-        "```python\nresult = df.shape[0]\n```"
-    )
+    client.chat.completions.create.return_value = _fake_response(_valid_payload())
 
-    code = generate_code(sample_schema, "how many rows?", client=client)
-    assert code == "result = df.shape[0]"
+    generate_code(sample_schema, "any", client=client)
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert kwargs["response_format"] == {"type": "json_object"}
+    assert kwargs["temperature"] == 0.0
+    assert kwargs["model"] == "openai/gpt-oss-20b"
 
 
-def test_generate_code_raises_on_empty_content(sample_schema: DatasetSchema) -> None:
+def test_generate_code_strips_fences_before_parsing(
+    sample_schema: DatasetSchema,
+) -> None:
+    client = MagicMock()
+    fenced = f"```json\n{_valid_payload()}\n```"
+    client.chat.completions.create.return_value = _fake_response(fenced)
+
+    result = generate_code(sample_schema, "any", client=client)
+    assert result.code == "result = df['sales'].mean()"
+
+
+def test_generate_code_raises_on_invalid_json(
+    sample_schema: DatasetSchema,
+) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response("not json at all")
+
+    with pytest.raises(LLMError, match="invalid structured output"):
+        generate_code(sample_schema, "any", client=client)
+
+
+def test_generate_code_raises_on_missing_field(
+    sample_schema: DatasetSchema,
+) -> None:
+    client = MagicMock()
+    partial = json.dumps({"code": "result = 1"})
+    client.chat.completions.create.return_value = _fake_response(partial)
+
+    with pytest.raises(LLMError, match="invalid structured output"):
+        generate_code(sample_schema, "any", client=client)
+
+
+def test_generate_code_raises_on_confidence_out_of_range(
+    sample_schema: DatasetSchema,
+) -> None:
+    client = MagicMock()
+    bad = json.dumps({"code": "x", "explanation": "y", "self_reported_confidence": 1.5})
+    client.chat.completions.create.return_value = _fake_response(bad)
+
+    with pytest.raises(LLMError, match="invalid structured output"):
+        generate_code(sample_schema, "any", client=client)
+
+
+def test_generate_code_raises_on_empty_content(
+    sample_schema: DatasetSchema,
+) -> None:
     client = MagicMock()
     client.chat.completions.create.return_value = _fake_response("")
 
     with pytest.raises(LLMError, match="empty content"):
-        generate_code(sample_schema, "anything", client=client)
+        generate_code(sample_schema, "any", client=client)
 
 
 def test_generate_code_raises_on_no_choices(sample_schema: DatasetSchema) -> None:
@@ -105,7 +183,7 @@ def test_generate_code_raises_on_no_choices(sample_schema: DatasetSchema) -> Non
     client.chat.completions.create.return_value = SimpleNamespace(choices=[])
 
     with pytest.raises(LLMError, match="no choices"):
-        generate_code(sample_schema, "anything", client=client)
+        generate_code(sample_schema, "any", client=client)
 
 
 def test_generate_code_wraps_api_errors(sample_schema: DatasetSchema) -> None:
@@ -113,4 +191,4 @@ def test_generate_code_wraps_api_errors(sample_schema: DatasetSchema) -> None:
     client.chat.completions.create.side_effect = RuntimeError("network boom")
 
     with pytest.raises(LLMError, match="Groq API call failed"):
-        generate_code(sample_schema, "anything", client=client)
+        generate_code(sample_schema, "any", client=client)
