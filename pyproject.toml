@@ -4,7 +4,8 @@ dynamic = ["version"]
 description = "Agentic AI for natural-language data analysis on CSV files."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["pandas>=2.2.0",
+    "pydantic>=2.8.0"]
 [dependency-groups]
 dev = [
     "ruff>=0.6.0",
