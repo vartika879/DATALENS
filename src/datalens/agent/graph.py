@@ -14,6 +14,7 @@ from datalens.agent.nodes import (
     fixer_node,
     planner_node,
     route_after_executor,
+    route_after_planner,
     summarizer_node,
 )
 from datalens.agent.state import AgentState
@@ -32,7 +33,14 @@ def build_agent_graph():
 
     # Linear path up to the executor
     graph.add_edge(START, "planner")
-    graph.add_edge("planner", "coder")
+    graph.add_conditional_edges(
+        "planner",
+        route_after_planner,
+        {
+            "coder": "coder",
+            "end": END,
+        },
+    )
     graph.add_edge("coder", "executor")
 
     # After executor: fixer loop, success path, or give-up

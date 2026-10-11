@@ -7,9 +7,10 @@ here so the rest of the codebase depends only on ``generate_code``.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from groq import Groq
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from datalens.config import get_settings
 from datalens.schema import DatasetSchema
@@ -34,6 +35,84 @@ class GeneratedCode(BaseModel):
     code: str = Field(..., min_length=1)
     explanation: str = Field(..., min_length=1)
     self_reported_confidence: float = Field(..., ge=0.0, le=1.0)
+
+
+PlannerDecision = Literal["proceed", "clarify", "refuse"]
+
+_PLANNER_PROMPT_FILE = "planner_v1.txt"
+
+
+class PlannerOutput(BaseModel):
+    """Structured output from the planner LLM call."""
+
+    decision: PlannerDecision
+    plan: str = ""
+    clarifying_question: str = ""
+    reasoning: str = ""
+
+    @model_validator(mode="after")
+    def _check_fields_for_decision(self) -> PlannerOutput:
+        if self.decision == "proceed" and not self.plan.strip():
+            raise ValueError("plan is required when decision is 'proceed'")
+        if self.decision == "clarify" and not self.clarifying_question.strip():
+            raise ValueError("clarifying_question is required when decision is 'clarify'")
+        return self
+
+
+def plan_question(
+    schema: DatasetSchema,
+    question: str,
+    *,
+    model: str = DEFAULT_MODEL,
+    client: Groq | None = None,
+) -> PlannerOutput:
+    """Ask the LLM how to handle a question against a schema.
+
+    Args:
+        schema: The dataset schema.
+        question: Natural-language question.
+        model: Groq model name.
+        client: Optional pre-built Groq client (for tests).
+
+    Returns:
+        A validated PlannerOutput.
+
+    Raises:
+        LLMError: On API failure, empty response, or invalid JSON.
+    """
+    if client is None:
+        settings = get_settings()
+        client = Groq(api_key=settings.groq_api_key)
+
+    system_prompt = _load_system_prompt(_PLANNER_PROMPT_FILE)
+    user_prompt = _build_user_prompt(schema, question)
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise LLMError(f"Groq API call failed: {exc}") from exc
+
+    if not response.choices:
+        raise LLMError("LLM returned no choices")
+
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise LLMError("LLM returned empty content")
+
+    cleaned = _strip_code_fences(content)
+
+    try:
+        return PlannerOutput.model_validate_json(cleaned)
+    except ValidationError as exc:
+        raise LLMError(f"Planner returned invalid structured output: {exc}") from exc
 
 
 def _load_system_prompt(name: str = _SYSTEM_PROMPT_FILE) -> str:

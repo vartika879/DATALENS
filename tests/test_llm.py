@@ -14,10 +14,12 @@ import pytest
 from datalens.llm import (
     GeneratedCode,
     LLMError,
+    PlannerOutput,
     _build_user_prompt,
     _load_system_prompt,
     _strip_code_fences,
     generate_code,
+    plan_question,
 )
 from datalens.schema import ColumnInfo, DatasetSchema
 
@@ -192,3 +194,65 @@ def test_generate_code_wraps_api_errors(sample_schema: DatasetSchema) -> None:
 
     with pytest.raises(LLMError, match="Groq API call failed"):
         generate_code(sample_schema, "any", client=client)
+
+
+# --- plan_question (mocked client) ------------------------------------------
+
+
+def _planner_payload(**overrides) -> str:
+    base = {
+        "decision": "proceed",
+        "plan": "sum the sales column",
+        "clarifying_question": "",
+        "reasoning": "sales is present",
+    }
+    base.update(overrides)
+    return json.dumps(base)
+
+
+def test_plan_question_returns_planner_output(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(_planner_payload())
+
+    result = plan_question(sample_schema, "total sales?", client=client)
+
+    assert isinstance(result, PlannerOutput)
+    assert result.decision == "proceed"
+    assert result.plan == "sum the sales column"
+
+
+def test_plan_question_clarify_requires_question(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    bad = _planner_payload(decision="clarify", plan="", clarifying_question="")
+    client.chat.completions.create.return_value = _fake_response(bad)
+
+    with pytest.raises(LLMError, match="Planner returned invalid"):
+        plan_question(sample_schema, "best?", client=client)
+
+
+def test_plan_question_proceed_requires_plan(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    bad = _planner_payload(decision="proceed", plan="")
+    client.chat.completions.create.return_value = _fake_response(bad)
+
+    with pytest.raises(LLMError, match="Planner returned invalid"):
+        plan_question(sample_schema, "any", client=client)
+
+
+def test_plan_question_refuse_ok_without_plan(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    ok = _planner_payload(
+        decision="refuse", plan="", clarifying_question="", reasoning="no such column"
+    )
+    client.chat.completions.create.return_value = _fake_response(ok)
+
+    result = plan_question(sample_schema, "profit?", client=client)
+    assert result.decision == "refuse"
+
+
+def test_plan_question_uses_json_mode(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(_planner_payload())
+    plan_question(sample_schema, "any", client=client)
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert kwargs["response_format"] == {"type": "json_object"}

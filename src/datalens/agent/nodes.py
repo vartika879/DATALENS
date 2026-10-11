@@ -8,15 +8,49 @@ in isolation before real logic lands.
 from __future__ import annotations
 
 from datalens.agent.state import AgentState
+from datalens.llm import LLMError, plan_question
+from datalens.registry import get_dataset
 
 # Maximum number of repair attempts after the initial execution.
 MAX_RETRIES = 3
 
 
 def planner_node(state: AgentState) -> dict:
-    """Decide whether the question is answerable and outline a plan."""
-    # Stub: assume answerable.
-    return {"is_answerable": True, "plan": "stub plan"}
+    """Decide how to handle the question: proceed, clarify, or refuse."""
+    dataset = get_dataset(state["dataset_id"])
+
+    try:
+        output = plan_question(dataset.schema, state["question"])
+    except LLMError as exc:
+        return {
+            "planner_decision": "refuse",
+            "planner_reasoning": f"planner failed: {exc}",
+            "final_answer": (
+                "I couldn't plan an answer to this question. Please try rephrasing it."
+            ),
+        }
+
+    updates: dict = {
+        "planner_decision": output.decision,
+        "planner_reasoning": output.reasoning,
+    }
+
+    if output.decision == "proceed":
+        updates["plan"] = output.plan
+    elif output.decision == "clarify":
+        updates["clarification_needed"] = output.clarifying_question
+        updates["final_answer"] = output.clarifying_question
+    else:  # refuse
+        updates["final_answer"] = f"I can't answer this question: {output.reasoning}"
+
+    return updates
+
+
+def route_after_planner(state: AgentState) -> str:
+    """Conditional edge: proceed to coder, or exit early."""
+    if state.get("planner_decision") == "proceed":
+        return "coder"
+    return "end"
 
 
 def coder_node(state: AgentState) -> dict:

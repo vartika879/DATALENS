@@ -1,42 +1,114 @@
-"""Tests for the LangGraph agent skeleton."""
+"""Tests for the LangGraph agent."""
 
 from __future__ import annotations
+
+from unittest.mock import patch
+
+import pandas as pd
+import pytest
 
 from datalens.agent.graph import build_agent_graph
 from datalens.agent.nodes import (
     MAX_RETRIES,
     fixer_node,
     route_after_executor,
+    route_after_planner,
 )
 from datalens.agent.state import AgentState
+from datalens.llm import PlannerOutput
+from datalens.registry import clear_registry, register_dataset
+from datalens.schema import ColumnInfo, DatasetSchema
+
+
+@pytest.fixture(autouse=True)
+def _clean() -> None:
+    clear_registry()
+
+
+@pytest.fixture
+def dataset_id() -> str:
+    df = pd.DataFrame({"sales": [10, 20, 30]})
+    schema = DatasetSchema(
+        file_name="t.csv",
+        row_count=3,
+        column_count=1,
+        columns=[ColumnInfo(name="sales", dtype="int64", null_count=0, null_percentage=0.0)],
+        sample_rows=[{"sales": 10}],
+    )
+    return register_dataset(df, schema)
+
+
+def _planner(decision: str, **kw) -> PlannerOutput:
+    defaults = {
+        "decision": decision,
+        "plan": "plan" if decision == "proceed" else "",
+        "clarifying_question": "which metric?" if decision == "clarify" else "",
+        "reasoning": "r",
+    }
+    defaults.update(kw)
+    return PlannerOutput(**defaults)
+
 
 # --- Graph construction -----------------------------------------------------
 
 
 def test_graph_compiles() -> None:
+    assert build_agent_graph() is not None
+
+
+# --- Happy path -------------------------------------------------------------
+
+
+@patch("datalens.agent.nodes.plan_question")
+def test_graph_proceed_path(mock_plan, dataset_id: str) -> None:
+    mock_plan.return_value = _planner("proceed")
     app = build_agent_graph()
-    assert app is not None
+    result = app.invoke({"dataset_id": dataset_id, "question": "any"})
 
-
-# --- End-to-end happy path --------------------------------------------------
-
-
-def test_graph_happy_path_produces_final_answer() -> None:
-    app = build_agent_graph()
-    result = app.invoke({"dataset_id": "ds1", "question": "any"})
-
-    # Node outputs are merged into the state.
-    assert result["is_answerable"] is True
+    assert result["planner_decision"] == "proceed"
     assert result["execution_status"] == "success"
     assert result["final_answer"].startswith("Result:")
+
+
+@patch("datalens.agent.nodes.plan_question")
+def test_graph_clarify_path(mock_plan, dataset_id: str) -> None:
+    mock_plan.return_value = _planner("clarify")
+    app = build_agent_graph()
+    result = app.invoke({"dataset_id": dataset_id, "question": "best?"})
+
+    assert result["planner_decision"] == "clarify"
+    assert result["final_answer"] == "which metric?"
+    assert "code" not in result  # coder never ran
+
+
+@patch("datalens.agent.nodes.plan_question")
+def test_graph_refuse_path(mock_plan, dataset_id: str) -> None:
+    mock_plan.return_value = _planner("refuse", reasoning="no profit column")
+    app = build_agent_graph()
+    result = app.invoke({"dataset_id": dataset_id, "question": "profit?"})
+
+    assert result["planner_decision"] == "refuse"
+    assert "no profit column" in result["final_answer"]
+    assert "code" not in result
 
 
 # --- Routing logic ----------------------------------------------------------
 
 
+def test_route_planner_proceed() -> None:
+    assert route_after_planner({"planner_decision": "proceed"}) == "coder"
+
+
+def test_route_planner_clarify() -> None:
+    assert route_after_planner({"planner_decision": "clarify"}) == "end"
+
+
+def test_route_planner_refuse() -> None:
+    assert route_after_planner({"planner_decision": "refuse"}) == "end"
+
+
 def test_route_success_goes_to_summarizer() -> None:
-    state: AgentState = {"execution_status": "success"}
-    assert route_after_executor(state) == "summarizer"
+    assert route_after_executor({"execution_status": "success"}) == "summarizer"
 
 
 def test_route_error_with_retries_left_goes_to_fixer() -> None:
@@ -45,32 +117,22 @@ def test_route_error_with_retries_left_goes_to_fixer() -> None:
 
 
 def test_route_error_at_max_retries_gives_up() -> None:
-    state: AgentState = {
-        "execution_status": "error",
-        "retry_count": MAX_RETRIES,
-    }
+    state: AgentState = {"execution_status": "error", "retry_count": MAX_RETRIES}
     assert route_after_executor(state) == "give_up"
 
 
-# --- Fixer node -------------------------------------------------------------
+# --- Fixer ------------------------------------------------------------------
 
 
 def test_fixer_increments_retry_count_and_records_error() -> None:
-    state: AgentState = {
-        "retry_count": 0,
-        "execution_error": "KeyError: 'nope'",
-    }
-    updates = fixer_node(state)
+    updates = fixer_node({"retry_count": 0, "execution_error": "KeyError"})
     assert updates["retry_count"] == 1
-    assert updates["previous_errors"] == ["KeyError: 'nope'"]
+    assert updates["previous_errors"] == ["KeyError"]
 
 
 def test_fixer_appends_to_existing_errors() -> None:
-    state: AgentState = {
-        "retry_count": 2,
-        "execution_error": "second",
-        "previous_errors": ["first"],
-    }
-    updates = fixer_node(state)
+    updates = fixer_node(
+        {"retry_count": 2, "execution_error": "second", "previous_errors": ["first"]}
+    )
     assert updates["retry_count"] == 3
     assert updates["previous_errors"] == ["first", "second"]

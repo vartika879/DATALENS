@@ -24,9 +24,9 @@ class AgentState(TypedDict, total=False):
     # --- Input ----------------------------------------------------------
     dataset_id: str
     question: str
-
     # --- Planner output -------------------------------------------------
-    is_answerable: bool
+    planner_decision: str  # "proceed" | "clarify" | "refuse"
+    planner_reasoning: str
     plan: str
     clarification_needed: str
 
