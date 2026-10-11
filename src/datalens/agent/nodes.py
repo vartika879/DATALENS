@@ -8,7 +8,7 @@ in isolation before real logic lands.
 from __future__ import annotations
 
 from datalens.agent.state import AgentState
-from datalens.llm import LLMError, plan_question
+from datalens.llm import LLMError, generate_code, plan_question
 from datalens.registry import get_dataset
 
 # Maximum number of repair attempts after the initial execution.
@@ -54,12 +54,29 @@ def route_after_planner(state: AgentState) -> str:
 
 
 def coder_node(state: AgentState) -> dict:
-    """Generate pandas code for the question."""
-    # Stub: emit a trivial result variable.
+    """Generate pandas code for the question using the dataset schema."""
+    dataset = get_dataset(state["dataset_id"])
+
+    try:
+        generated = generate_code(dataset.schema, state["question"])
+    except LLMError as exc:
+        return {
+            "code": "",
+            "explanation": "",
+            "self_reported_confidence": 0.0,
+            "previous_code": state.get("previous_code", ""),
+            "execution_status": "error",
+            "execution_error": f"coder failed: {exc}",
+            "final_answer": (
+                "I couldn't generate code for this question. Please try rephrasing it."
+            ),
+        }
+
     return {
-        "code": "result = 0",
-        "explanation": "stub explanation",
-        "self_reported_confidence": 0.5,
+        "code": generated.code,
+        "explanation": generated.explanation,
+        "self_reported_confidence": generated.self_reported_confidence,
+        "previous_code": generated.code,
     }
 
 

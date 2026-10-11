@@ -15,7 +15,7 @@ from datalens.agent.nodes import (
     route_after_planner,
 )
 from datalens.agent.state import AgentState
-from datalens.llm import PlannerOutput
+from datalens.llm import GeneratedCode, LLMError, PlannerOutput
 from datalens.registry import clear_registry, register_dataset
 from datalens.schema import ColumnInfo, DatasetSchema
 
@@ -59,13 +59,20 @@ def test_graph_compiles() -> None:
 # --- Happy path -------------------------------------------------------------
 
 
+@patch("datalens.agent.nodes.generate_code")
 @patch("datalens.agent.nodes.plan_question")
-def test_graph_proceed_path(mock_plan, dataset_id: str) -> None:
+def test_graph_proceed_path(mock_plan, mock_gen, dataset_id: str) -> None:
     mock_plan.return_value = _planner("proceed")
+    mock_gen.return_value = GeneratedCode(
+        code="result = df['sales'].sum()",
+        explanation="sum of sales",
+        self_reported_confidence=0.9,
+    )
     app = build_agent_graph()
     result = app.invoke({"dataset_id": dataset_id, "question": "any"})
 
     assert result["planner_decision"] == "proceed"
+    assert result["code"] == "result = df['sales'].sum()"
     assert result["execution_status"] == "success"
     assert result["final_answer"].startswith("Result:")
 
@@ -136,3 +143,47 @@ def test_fixer_appends_to_existing_errors() -> None:
     )
     assert updates["retry_count"] == 3
     assert updates["previous_errors"] == ["first", "second"]
+
+
+# --- Coder node -------------------------------------------------------------
+
+from datalens.agent.nodes import coder_node
+
+
+@patch("datalens.agent.nodes.generate_code")
+def test_coder_node_success(mock_gen, dataset_id: str) -> None:
+    mock_gen.return_value = GeneratedCode(
+        code="result = df['sales'].mean()",
+        explanation="mean of sales",
+        self_reported_confidence=0.9,
+    )
+    updates = coder_node({"dataset_id": dataset_id, "question": "any"})
+
+    assert updates["code"] == "result = df['sales'].mean()"
+    assert updates["explanation"] == "mean of sales"
+    assert updates["self_reported_confidence"] == pytest.approx(0.9)
+    assert updates["previous_code"] == "result = df['sales'].mean()"
+
+
+@patch("datalens.agent.nodes.generate_code")
+def test_coder_node_llm_error(mock_gen, dataset_id: str) -> None:
+    mock_gen.side_effect = LLMError("api down")
+    updates = coder_node({"dataset_id": dataset_id, "question": "any"})
+
+    assert updates["code"] == ""
+    assert updates["execution_status"] == "error"
+    assert "coder failed" in updates["execution_error"]
+    assert "final_answer" in updates
+
+
+@patch("datalens.agent.nodes.generate_code")
+def test_coder_node_preserves_previous_code_on_error(mock_gen, dataset_id: str) -> None:
+    mock_gen.side_effect = LLMError("boom")
+    updates = coder_node(
+        {
+            "dataset_id": dataset_id,
+            "question": "any",
+            "previous_code": "old code",
+        }
+    )
+    assert updates["previous_code"] == "old code"

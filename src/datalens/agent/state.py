@@ -34,7 +34,7 @@ class AgentState(TypedDict, total=False):
     code: str
     explanation: str
     self_reported_confidence: float
-
+    previous_code: str  # for fixer — last code attempted
     # --- Executor output ------------------------------------------------
     execution_status: str  # "success" | "error"
     result_type: str | None  # "scalar" | "dataframe" | "series" | "none"
