@@ -23,12 +23,15 @@ class AgentState(TypedDict, total=False):
 
     # --- Input ----------------------------------------------------------
     dataset_id: str
+    session_id: str
     question: str
     # --- Planner output -------------------------------------------------
-    planner_decision: str  # "proceed" | "clarify" | "refuse"
+    resolved_question: str
+    planner_decision: str
     planner_reasoning: str
     plan: str
     clarification_needed: str
+    conversation_history: list[dict]
 
     # --- Coder output ---------------------------------------------------
     code: str

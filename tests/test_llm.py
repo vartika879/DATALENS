@@ -205,6 +205,7 @@ def test_generate_code_wraps_api_errors(sample_schema: DatasetSchema) -> None:
 
 def _planner_payload(**overrides) -> str:
     base = {
+        "resolved_question": "sum the sales column",
         "decision": "proceed",
         "plan": "sum the sales column",
         "clarifying_question": "",
@@ -391,3 +392,41 @@ def test_summarize_raises_on_invalid_json(sample_schema: DatasetSchema) -> None:
             explanation="y",
             client=client,
         )
+
+
+# --- plan_question with history ---------------------------------------------
+
+
+def test_plan_question_includes_history_in_prompt(
+    sample_schema: DatasetSchema,
+) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(
+        _planner_payload(resolved_question="avg salary?")
+    )
+
+    plan_question(
+        sample_schema,
+        "same but by city",
+        history=[
+            {"question": "avg salary?", "answer": "57500"},
+        ],
+        client=client,
+    )
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    user_msg = kwargs["messages"][1]["content"]
+    assert "avg salary?" in user_msg
+    assert "57500" in user_msg
+    assert "same but by city" in user_msg
+
+
+def test_plan_question_no_history_still_works(
+    sample_schema: DatasetSchema,
+) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(
+        _planner_payload(resolved_question="total sales?")
+    )
+    result = plan_question(sample_schema, "total sales?", client=client)
+    assert result.resolved_question == "total sales?"

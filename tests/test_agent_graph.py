@@ -27,6 +27,7 @@ from datalens.llm import (
 )
 from datalens.registry import clear_registry, register_dataset
 from datalens.schema import ColumnInfo, DatasetSchema
+from datalens.session import clear_sessions, create_session
 
 
 @pytest.fixture(autouse=True)
@@ -49,6 +50,7 @@ def dataset_id() -> str:
 
 def _planner(decision: str, **kw) -> PlannerOutput:
     defaults = {
+        "resolved_question": "resolved q",
         "decision": decision,
         "plan": "plan" if decision == "proceed" else "",
         "clarifying_question": "which metric?" if decision == "clarify" else "",
@@ -358,3 +360,36 @@ def test_summarizer_node_respects_existing_final_answer(
         }
     )
     assert updates == {}
+
+
+# --- Multi-turn -------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clean_sessions() -> None:
+    clear_sessions()
+
+
+@patch("datalens.agent.nodes.summarize")
+@patch("datalens.agent.nodes.generate_code")
+@patch("datalens.agent.nodes.plan_question")
+def test_graph_passes_history_to_planner(mock_plan, mock_gen, mock_sum, dataset_id: str) -> None:
+    sid = create_session()
+    # Seed a prior turn.
+    from datalens.session import append_turn
+
+    append_turn(sid, "avg salary?", "57500")
+
+    mock_plan.return_value = _planner("proceed")
+    mock_gen.return_value = GeneratedCode(
+        code="result = df['sales'].sum()",
+        explanation="x",
+        self_reported_confidence=0.9,
+    )
+    mock_sum.return_value = SummaryOutput(answer="60")
+
+    app = build_agent_graph()
+    app.invoke({"session_id": sid, "dataset_id": dataset_id, "question": "same but by city"})
+
+    call_kwargs = mock_plan.call_args.kwargs
+    assert call_kwargs["history"] == [{"question": "avg salary?", "answer": "57500"}]

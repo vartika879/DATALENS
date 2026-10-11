@@ -9,29 +9,38 @@ from datalens.agent.state import AgentState
 from datalens.executor import execute_code
 from datalens.llm import LLMError, fix_code, generate_code, plan_question, summarize
 from datalens.registry import get_dataset
+from datalens.session import get_history
 
 # Maximum number of repair attempts after the initial execution.
 MAX_RETRIES = 3
 
 
 def planner_node(state: AgentState) -> dict:
-    """Decide how to handle the question: proceed, clarify, or refuse."""
+    """Resolve the question (using history) and decide how to proceed."""
     dataset = get_dataset(state["dataset_id"])
 
+    session_id = state.get("session_id")
+    history_turns = get_history(session_id) if session_id else []
+    history_dicts = [{"question": t.question, "answer": t.final_answer} for t in history_turns]
+
     try:
-        output = plan_question(dataset.schema, state["question"])
+        output = plan_question(dataset.schema, state["question"], history=history_dicts)
     except LLMError as exc:
         return {
             "planner_decision": "refuse",
             "planner_reasoning": f"planner failed: {exc}",
+            "resolved_question": state["question"],
+            "conversation_history": history_dicts,
             "final_answer": (
                 "I couldn't plan an answer to this question. Please try rephrasing it."
             ),
         }
 
     updates: dict = {
+        "resolved_question": output.resolved_question,
         "planner_decision": output.decision,
         "planner_reasoning": output.reasoning,
+        "conversation_history": history_dicts,
     }
 
     if output.decision == "proceed":
@@ -39,7 +48,7 @@ def planner_node(state: AgentState) -> dict:
     elif output.decision == "clarify":
         updates["clarification_needed"] = output.clarifying_question
         updates["final_answer"] = output.clarifying_question
-    else:  # refuse
+    else:
         updates["final_answer"] = f"I can't answer this question: {output.reasoning}"
 
     return updates
@@ -57,7 +66,8 @@ def coder_node(state: AgentState) -> dict:
     dataset = get_dataset(state["dataset_id"])
 
     try:
-        generated = generate_code(dataset.schema, state["question"])
+        question = state.get("resolved_question") or state["question"]
+        generated = generate_code(dataset.schema, question)
     except LLMError as exc:
         return {
             "code": "",

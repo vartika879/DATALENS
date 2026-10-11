@@ -21,6 +21,7 @@ _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _SYSTEM_PROMPT_FILE = "generate_code_v1.txt"
 _FIXER_PROMPT_FILE = "fixer_v1.txt"
 _SUMMARIZER_PROMPT_FILE = "summarizer_v1.txt"
+_PLANNER_PROMPT_FILE = "planner_v2.txt"
 
 
 class LLMError(Exception):
@@ -41,12 +42,13 @@ class GeneratedCode(BaseModel):
 
 PlannerDecision = Literal["proceed", "clarify", "refuse"]
 
-_PLANNER_PROMPT_FILE = "planner_v1.txt"
+_PLANNER_PROMPT_FILE = "planner_v2.txt"
 
 
 class PlannerOutput(BaseModel):
     """Structured output from the planner LLM call."""
 
+    resolved_question: str = Field(..., min_length=1)
     decision: PlannerDecision
     plan: str = ""
     clarifying_question: str = ""
@@ -64,6 +66,7 @@ class PlannerOutput(BaseModel):
 def plan_question(
     schema: DatasetSchema,
     question: str,
+    history: list[dict] | None = None,
     *,
     model: str = DEFAULT_MODEL,
     client: Groq | None = None,
@@ -88,6 +91,10 @@ def plan_question(
 
     system_prompt = _load_system_prompt(_PLANNER_PROMPT_FILE)
     user_prompt = _build_user_prompt(schema, question)
+
+    if history:
+        history_text = "\n".join(f"- Q: {t['question']}\n  A: {t['answer']}" for t in history)
+        user_prompt = f"Conversation history:\n{history_text}\n\n{user_prompt}"
 
     try:
         response = client.chat.completions.create(
@@ -151,6 +158,8 @@ def _build_fixer_user_prompt(
     if previous_errors:
         earlier = "\n".join(f"- {e}" for e in previous_errors)
         parts.append(f"Earlier errors from previous attempts:\n{earlier}")
+
+    parts.append("Respond with a JSON object.")
 
     return "\n\n".join(parts)
 
@@ -248,6 +257,7 @@ def _build_user_prompt(schema: DatasetSchema, question: str) -> str:
         f"columns:\n{columns_desc}\n\n"
         f"sample rows:\n{samples_desc}\n\n"
         f"Question: {question}"
+        f"Respond with a JSON object."
     )
 
 
@@ -341,6 +351,7 @@ def _build_summarizer_user_prompt(
         f"columns:\n{columns_desc}\n\n"
         f"Final result:\n{result_repr}\n\n"
         f"Code explanation:\n{explanation}"
+        f"Respond with a JSON object."
     )
 
 
