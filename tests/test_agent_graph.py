@@ -10,6 +10,7 @@ import pytest
 from datalens.agent.graph import build_agent_graph
 from datalens.agent.nodes import (
     MAX_RETRIES,
+    coder_node,
     fixer_node,
     route_after_executor,
     route_after_planner,
@@ -146,8 +147,6 @@ def test_fixer_appends_to_existing_errors() -> None:
 
 
 # --- Coder node -------------------------------------------------------------
-
-from datalens.agent.nodes import coder_node
 
 
 @patch("datalens.agent.nodes.generate_code")
