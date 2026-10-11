@@ -15,9 +15,16 @@ from datalens.agent.nodes import (
     fixer_node,
     route_after_executor,
     route_after_planner,
+    summarizer_node,
 )
 from datalens.agent.state import AgentState
-from datalens.llm import FixedCode, GeneratedCode, LLMError, PlannerOutput
+from datalens.llm import (
+    FixedCode,
+    GeneratedCode,
+    LLMError,
+    PlannerOutput,
+    SummaryOutput,
+)
 from datalens.registry import clear_registry, register_dataset
 from datalens.schema import ColumnInfo, DatasetSchema
 
@@ -61,24 +68,25 @@ def test_graph_compiles() -> None:
 # --- Happy path -------------------------------------------------------------
 
 
+@patch("datalens.agent.nodes.summarize")
 @patch("datalens.agent.nodes.generate_code")
 @patch("datalens.agent.nodes.plan_question")
-def test_graph_proceed_path(mock_plan, mock_gen, dataset_id: str) -> None:
+def test_graph_proceed_path(mock_plan, mock_gen, mock_sum, dataset_id: str) -> None:
     mock_plan.return_value = _planner("proceed")
     mock_gen.return_value = GeneratedCode(
         code="result = df['sales'].sum()",
         explanation="sum of sales",
         self_reported_confidence=0.9,
     )
+    mock_sum.return_value = SummaryOutput(answer="Total sales are 60.")
     app = build_agent_graph()
     result = app.invoke({"dataset_id": dataset_id, "question": "any"})
 
     assert result["planner_decision"] == "proceed"
     assert result["code"] == "result = df['sales'].sum()"
     assert result["execution_status"] == "success"
-    assert result["result_data"] == 60  # 10 + 20 + 30 from fixture
-    assert result["result_type"] == "scalar"
-    assert result["final_answer"].startswith("Result:")
+    assert result["result_data"] == 60
+    assert result["final_answer"] == "Total sales are 60."
 
 
 @patch("datalens.agent.nodes.plan_question")
@@ -279,11 +287,13 @@ def test_fixer_node_handles_llm_error(mock_fix, dataset_id: str) -> None:
 
 
 # --- End-to-end repair loop -------------------------------------------------
-
-
+@patch("datalens.agent.nodes.summarize")
+@patch("datalens.agent.nodes.fix_code")
 @patch("datalens.agent.nodes.generate_code")
 @patch("datalens.agent.nodes.plan_question")
-def test_graph_repairs_failing_code(mock_plan, mock_gen, dataset_id: str) -> None:
+def test_graph_repairs_failing_code(
+    mock_plan, mock_gen, mock_fix, mock_sum, dataset_id: str
+) -> None:
     """First coder output fails; fixer produces valid code; graph succeeds."""
     mock_plan.return_value = _planner("proceed")
     mock_gen.return_value = GeneratedCode(
@@ -291,16 +301,60 @@ def test_graph_repairs_failing_code(mock_plan, mock_gen, dataset_id: str) -> Non
         explanation="bad",
         self_reported_confidence=0.5,
     )
+    mock_fix.return_value = FixedCode(
+        code="result = df['sales'].sum()",
+        explanation="fixed",
+    )
+    mock_sum.return_value = SummaryOutput(answer="Total sales are 60.")
 
-    with patch("datalens.agent.nodes.fix_code") as mock_fix:
-        mock_fix.return_value = FixedCode(
-            code="result = df['sales'].sum()",
-            explanation="fixed",
-        )
-        app = build_agent_graph()
-        result = app.invoke({"dataset_id": dataset_id, "question": "any"})
+    app = build_agent_graph()
+    result = app.invoke({"dataset_id": dataset_id, "question": "any"})
 
     assert result["execution_status"] == "success"
     assert result["result_data"] == 60
     assert result["retry_count"] == 1
     assert len(result["previous_errors"]) == 1
+
+
+# --- Summarizer node (real) -------------------------------------------------
+
+
+@patch("datalens.agent.nodes.summarize")
+def test_summarizer_node_returns_llm_answer(mock_sum, dataset_id: str) -> None:
+    mock_sum.return_value = SummaryOutput(answer="The total sales are 60.")
+    updates = summarizer_node(
+        {
+            "dataset_id": dataset_id,
+            "question": "total sales?",
+            "result_repr": "60",
+            "explanation": "sum of sales",
+        }
+    )
+    assert updates["final_answer"] == "The total sales are 60."
+
+
+@patch("datalens.agent.nodes.summarize")
+def test_summarizer_node_falls_back_on_llm_error(mock_sum, dataset_id: str) -> None:
+    mock_sum.side_effect = LLMError("api down")
+    updates = summarizer_node(
+        {
+            "dataset_id": dataset_id,
+            "question": "q",
+            "result_repr": "42",
+            "explanation": "e",
+        }
+    )
+    assert updates["final_answer"] == "Result: 42"
+
+
+def test_summarizer_node_respects_existing_final_answer(
+    dataset_id: str,
+) -> None:
+    updates = summarizer_node(
+        {
+            "dataset_id": dataset_id,
+            "question": "q",
+            "final_answer": "already set",
+        }
+    )
+    assert updates == {}

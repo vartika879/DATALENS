@@ -7,7 +7,7 @@ in isolation before real logic lands.
 
 from datalens.agent.state import AgentState
 from datalens.executor import execute_code
-from datalens.llm import LLMError, fix_code, generate_code, plan_question
+from datalens.llm import LLMError, fix_code, generate_code, plan_question, summarize
 from datalens.registry import get_dataset
 
 # Maximum number of repair attempts after the initial execution.
@@ -172,9 +172,34 @@ def fixer_node(state: AgentState) -> dict:
 
 
 def summarizer_node(state: AgentState) -> dict:
-    """Produce a final, user-facing answer."""
-    # Stub: echo the result.
-    return {"final_answer": f"Result: {state.get('result_repr')}"}
+    """Produce a natural-language answer for the user.
+
+    If the planner already set a final_answer (clarify/refuse cases),
+    respect it — the summarizer only runs on the success path.
+
+    If the LLM summarizer fails, fall back to a plain ``Result: X``
+    so the user still sees something useful.
+    """
+    # Respect a planner-provided final answer if present.
+    if state.get("final_answer"):
+        return {}
+
+    dataset = get_dataset(state["dataset_id"])
+
+    result_repr = state.get("result_repr") or ""
+    explanation = state.get("explanation") or ""
+
+    try:
+        summary = summarize(
+            schema=dataset.schema,
+            question=state["question"],
+            result_repr=result_repr,
+            explanation=explanation,
+        )
+    except LLMError:
+        return {"final_answer": f"Result: {result_repr}"}
+
+    return {"final_answer": summary.answer}
 
 
 def route_after_executor(state: AgentState) -> str:

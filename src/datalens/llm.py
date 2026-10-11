@@ -20,6 +20,7 @@ DEFAULT_MODEL = "openai/gpt-oss-20b"
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _SYSTEM_PROMPT_FILE = "generate_code_v1.txt"
 _FIXER_PROMPT_FILE = "fixer_v1.txt"
+_SUMMARIZER_PROMPT_FILE = "summarizer_v1.txt"
 
 
 class LLMError(Exception):
@@ -317,3 +318,92 @@ def generate_code(
         return GeneratedCode.model_validate_json(cleaned)
     except ValidationError as exc:
         raise LLMError(f"LLM returned invalid structured output: {exc}") from exc
+
+
+class SummaryOutput(BaseModel):
+    """Structured output from the summarizer LLM call."""
+
+    answer: str = Field(..., min_length=1)
+
+
+def _build_summarizer_user_prompt(
+    schema: DatasetSchema,
+    question: str,
+    result_repr: str,
+    explanation: str,
+) -> str:
+    """Compose the summarizer user message."""
+    columns_desc = "\n".join(f"- {c.name} ({c.dtype})" for c in schema.columns)
+
+    return (
+        f"Question: {question}\n\n"
+        f"CSV schema:\nfile: {schema.file_name}\n"
+        f"columns:\n{columns_desc}\n\n"
+        f"Final result:\n{result_repr}\n\n"
+        f"Code explanation:\n{explanation}"
+    )
+
+
+def summarize(
+    schema: DatasetSchema,
+    question: str,
+    result_repr: str,
+    explanation: str,
+    *,
+    model: str = DEFAULT_MODEL,
+    client: Groq | None = None,
+) -> SummaryOutput:
+    """Ask the LLM to produce a natural-language answer.
+
+    Args:
+        schema: The dataset schema.
+        question: Original user question.
+        result_repr: String representation of the final result.
+        explanation: What the code was doing.
+        model: Groq model name.
+        client: Optional pre-built Groq client (for tests).
+
+    Returns:
+        A validated SummaryOutput.
+
+    Raises:
+        LLMError: On API failure, empty response, or invalid JSON.
+    """
+    if client is None:
+        settings = get_settings()
+        client = Groq(api_key=settings.groq_api_key)
+
+    system_prompt = _load_system_prompt(_SUMMARIZER_PROMPT_FILE)
+    user_prompt = _build_summarizer_user_prompt(
+        schema=schema,
+        question=question,
+        result_repr=result_repr,
+        explanation=explanation,
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise LLMError(f"Groq API call failed: {exc}") from exc
+
+    if not response.choices:
+        raise LLMError("LLM returned no choices")
+
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise LLMError("LLM returned empty content")
+
+    cleaned = _strip_code_fences(content)
+
+    try:
+        return SummaryOutput.model_validate_json(cleaned)
+    except ValidationError as exc:
+        raise LLMError(f"Summarizer returned invalid structured output: {exc}") from exc

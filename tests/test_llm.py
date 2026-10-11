@@ -16,12 +16,14 @@ from datalens.llm import (
     GeneratedCode,
     LLMError,
     PlannerOutput,
+    SummaryOutput,
     _build_user_prompt,
     _load_system_prompt,
     _strip_code_fences,
     fix_code,
     generate_code,
     plan_question,
+    summarize,
 )
 from datalens.schema import ColumnInfo, DatasetSchema
 
@@ -332,5 +334,60 @@ def test_fix_code_raises_on_invalid_json(sample_schema: DatasetSchema) -> None:
             question="q",
             previous_code="bad",
             error_message="e",
+            client=client,
+        )
+
+
+# --- summarize (mocked client) ----------------------------------------------
+
+
+def _summary_payload(answer: str = "The average salary is 57500.") -> str:
+    return json.dumps({"answer": answer})
+
+
+def test_summarize_returns_summary_output(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(_summary_payload())
+
+    result = summarize(
+        schema=sample_schema,
+        question="avg salary?",
+        result_repr="57500.0",
+        explanation="mean of salary",
+        client=client,
+    )
+
+    assert isinstance(result, SummaryOutput)
+    assert result.answer == "The average salary is 57500."
+
+
+def test_summarize_includes_result_in_prompt(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(_summary_payload())
+
+    summarize(
+        schema=sample_schema,
+        question="q",
+        result_repr="42",
+        explanation="exp",
+        client=client,
+    )
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    user_msg = kwargs["messages"][1]["content"]
+    assert "42" in user_msg
+    assert "exp" in user_msg
+    assert kwargs["response_format"] == {"type": "json_object"}
+
+
+def test_summarize_raises_on_invalid_json(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response("not json")
+    with pytest.raises(LLMError, match="Summarizer returned invalid"):
+        summarize(
+            schema=sample_schema,
+            question="q",
+            result_repr="x",
+            explanation="y",
             client=client,
         )
