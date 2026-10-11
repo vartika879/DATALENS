@@ -11,6 +11,7 @@ from datalens.agent.graph import build_agent_graph
 from datalens.agent.nodes import (
     MAX_RETRIES,
     coder_node,
+    executor_node,
     fixer_node,
     route_after_executor,
     route_after_planner,
@@ -75,6 +76,8 @@ def test_graph_proceed_path(mock_plan, mock_gen, dataset_id: str) -> None:
     assert result["planner_decision"] == "proceed"
     assert result["code"] == "result = df['sales'].sum()"
     assert result["execution_status"] == "success"
+    assert result["result_data"] == 60  # 10 + 20 + 30 from fixture
+    assert result["result_type"] == "scalar"
     assert result["final_answer"].startswith("Result:")
 
 
@@ -186,3 +189,47 @@ def test_coder_node_preserves_previous_code_on_error(mock_gen, dataset_id: str) 
         }
     )
     assert updates["previous_code"] == "old code"
+
+
+# --- Executor node ----------------------------------------------------------
+
+
+def test_executor_node_success(dataset_id: str) -> None:
+    updates = executor_node({"dataset_id": dataset_id, "code": "result = df['sales'].sum()"})
+    assert updates["execution_status"] == "success"
+    assert updates["result_data"] == 60
+    assert updates["result_type"] == "scalar"
+    assert updates["execution_error"] is None
+    assert updates["execution_duration_ms"] >= 0.0
+
+
+def test_executor_node_captures_runtime_error(dataset_id: str) -> None:
+    updates = executor_node({"dataset_id": dataset_id, "code": "result = df['nope'].sum()"})
+    assert updates["execution_status"] == "error"
+    assert updates["result_data"] is None
+    assert "nope" in (updates["execution_error"] or "")
+    assert updates["execution_traceback"] is not None
+
+
+def test_executor_node_empty_code_returns_error(dataset_id: str) -> None:
+    updates = executor_node({"dataset_id": dataset_id, "code": ""})
+    assert updates["execution_status"] == "error"
+    assert "no code to execute" in (updates["execution_error"] or "")
+
+
+def test_executor_node_preserves_coder_error(dataset_id: str) -> None:
+    updates = executor_node(
+        {
+            "dataset_id": dataset_id,
+            "code": "",
+            "execution_error": "coder failed: api down",
+        }
+    )
+    assert updates["execution_status"] == "error"
+    assert updates["execution_error"] == "coder failed: api down"
+
+
+def test_executor_node_missing_result_variable(dataset_id: str) -> None:
+    updates = executor_node({"dataset_id": dataset_id, "code": "x = df['sales'].sum()"})
+    assert updates["execution_status"] == "error"
+    assert "result" in (updates["execution_error"] or "")

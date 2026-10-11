@@ -4,8 +4,6 @@ The graph is deliberately explicit: every node and edge is visible here so
 the control flow can be reasoned about without chasing decorators.
 """
 
-from __future__ import annotations
-
 from langgraph.graph import END, START, StateGraph
 
 from datalens.agent.nodes import (

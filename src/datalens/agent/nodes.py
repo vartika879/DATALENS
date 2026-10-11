@@ -5,9 +5,8 @@ updates. Phase 2.1 provides pass-through stubs so the graph can be tested
 in isolation before real logic lands.
 """
 
-from __future__ import annotations
-
 from datalens.agent.state import AgentState
+from datalens.executor import execute_code
 from datalens.llm import LLMError, generate_code, plan_question
 from datalens.registry import get_dataset
 
@@ -81,14 +80,47 @@ def coder_node(state: AgentState) -> dict:
 
 
 def executor_node(state: AgentState) -> dict:
-    """Execute the generated code."""
-    # Stub: pretend success.
+    """Execute the generated code against the dataset.
+
+    Handles three cases:
+    1. Code is empty (coder failed) — propagate the error.
+    2. execute_code returns success — store the serialized result.
+    3. execute_code returns error — store the traceback for the fixer.
+    """
+    code = state.get("code") or ""
+
+    # Case 1: coder failed and left no code.
+    if not code.strip():
+        return {
+            "execution_status": "error",
+            "execution_error": state.get("execution_error") or "no code to execute",
+            "execution_traceback": None,
+            "execution_duration_ms": 0.0,
+        }
+
+    # Case 2 & 3: run the code.
+    dataset = get_dataset(state["dataset_id"])
+    result = execute_code(code, dataset.df)
+
+    if result.status == "success":
+        return {
+            "execution_status": "success",
+            "result_type": result.result_type,
+            "result_data": result.result_data,
+            "result_repr": result.result_repr,
+            "execution_error": None,
+            "execution_traceback": None,
+            "execution_duration_ms": result.duration_ms,
+        }
+
     return {
-        "execution_status": "success",
-        "result_type": "scalar",
-        "result_data": 0,
-        "result_repr": "0",
-        "execution_duration_ms": 0.0,
+        "execution_status": "error",
+        "result_type": None,
+        "result_data": None,
+        "result_repr": None,
+        "execution_error": result.error_message,
+        "execution_traceback": result.error_traceback,
+        "execution_duration_ms": result.duration_ms,
     }
 
 
