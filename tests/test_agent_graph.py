@@ -17,7 +17,7 @@ from datalens.agent.nodes import (
     route_after_planner,
 )
 from datalens.agent.state import AgentState
-from datalens.llm import GeneratedCode, LLMError, PlannerOutput
+from datalens.llm import FixedCode, GeneratedCode, LLMError, PlannerOutput
 from datalens.registry import clear_registry, register_dataset
 from datalens.schema import ColumnInfo, DatasetSchema
 
@@ -135,20 +135,6 @@ def test_route_error_at_max_retries_gives_up() -> None:
 # --- Fixer ------------------------------------------------------------------
 
 
-def test_fixer_increments_retry_count_and_records_error() -> None:
-    updates = fixer_node({"retry_count": 0, "execution_error": "KeyError"})
-    assert updates["retry_count"] == 1
-    assert updates["previous_errors"] == ["KeyError"]
-
-
-def test_fixer_appends_to_existing_errors() -> None:
-    updates = fixer_node(
-        {"retry_count": 2, "execution_error": "second", "previous_errors": ["first"]}
-    )
-    assert updates["retry_count"] == 3
-    assert updates["previous_errors"] == ["first", "second"]
-
-
 # --- Coder node -------------------------------------------------------------
 
 
@@ -233,3 +219,88 @@ def test_executor_node_missing_result_variable(dataset_id: str) -> None:
     updates = executor_node({"dataset_id": dataset_id, "code": "x = df['sales'].sum()"})
     assert updates["execution_status"] == "error"
     assert "result" in (updates["execution_error"] or "")
+
+
+# --- Fixer node (real) ------------------------------------------------------
+
+
+@patch("datalens.agent.nodes.fix_code")
+def test_fixer_node_updates_code_and_increments_retry(mock_fix, dataset_id: str) -> None:
+    mock_fix.return_value = FixedCode(
+        code="result = df['sales'].sum()",
+        explanation="fixed sum",
+    )
+    updates = fixer_node(
+        {
+            "dataset_id": dataset_id,
+            "question": "any",
+            "code": "result = df['sales'].summ()",
+            "execution_error": "AttributeError: summ",
+            "execution_traceback": "tb",
+        }
+    )
+
+    assert updates["code"] == "result = df['sales'].sum()"
+    assert updates["previous_code"] == "result = df['sales'].summ()"
+    assert updates["retry_count"] == 1
+    assert updates["previous_errors"] == ["AttributeError: summ"]
+    assert updates["execution_status"] == ""
+
+
+@patch("datalens.agent.nodes.fix_code")
+def test_fixer_node_accumulates_previous_errors(mock_fix, dataset_id: str) -> None:
+    mock_fix.return_value = FixedCode(code="new", explanation="e")
+    updates = fixer_node(
+        {
+            "dataset_id": dataset_id,
+            "question": "any",
+            "code": "bad",
+            "execution_error": "second",
+            "previous_errors": ["first"],
+        }
+    )
+    assert updates["previous_errors"] == ["first", "second"]
+    assert updates["retry_count"] == 1
+
+
+@patch("datalens.agent.nodes.fix_code")
+def test_fixer_node_handles_llm_error(mock_fix, dataset_id: str) -> None:
+    mock_fix.side_effect = LLMError("api down")
+    updates = fixer_node(
+        {
+            "dataset_id": dataset_id,
+            "question": "any",
+            "code": "bad",
+            "execution_error": "orig error",
+        }
+    )
+    assert updates["retry_count"] == 1
+    assert "fixer failed" in updates["execution_error"]
+
+
+# --- End-to-end repair loop -------------------------------------------------
+
+
+@patch("datalens.agent.nodes.generate_code")
+@patch("datalens.agent.nodes.plan_question")
+def test_graph_repairs_failing_code(mock_plan, mock_gen, dataset_id: str) -> None:
+    """First coder output fails; fixer produces valid code; graph succeeds."""
+    mock_plan.return_value = _planner("proceed")
+    mock_gen.return_value = GeneratedCode(
+        code="result = df['nonexistent'].sum()",
+        explanation="bad",
+        self_reported_confidence=0.5,
+    )
+
+    with patch("datalens.agent.nodes.fix_code") as mock_fix:
+        mock_fix.return_value = FixedCode(
+            code="result = df['sales'].sum()",
+            explanation="fixed",
+        )
+        app = build_agent_graph()
+        result = app.invoke({"dataset_id": dataset_id, "question": "any"})
+
+    assert result["execution_status"] == "success"
+    assert result["result_data"] == 60
+    assert result["retry_count"] == 1
+    assert len(result["previous_errors"]) == 1

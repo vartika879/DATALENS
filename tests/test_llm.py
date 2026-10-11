@@ -12,12 +12,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from datalens.llm import (
+    FixedCode,
     GeneratedCode,
     LLMError,
     PlannerOutput,
     _build_user_prompt,
     _load_system_prompt,
     _strip_code_fences,
+    fix_code,
     generate_code,
     plan_question,
 )
@@ -256,3 +258,79 @@ def test_plan_question_uses_json_mode(sample_schema: DatasetSchema) -> None:
     plan_question(sample_schema, "any", client=client)
     kwargs = client.chat.completions.create.call_args.kwargs
     assert kwargs["response_format"] == {"type": "json_object"}
+
+
+# --- fix_code (mocked client) -----------------------------------------------
+
+
+def _fixer_payload(**overrides) -> str:
+    base = {
+        "code": "result = df['sales'].sum()",
+        "explanation": "sum of sales",
+    }
+    base.update(overrides)
+    return json.dumps(base)
+
+
+def test_fix_code_returns_fixed_code_model(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(_fixer_payload())
+
+    result = fix_code(
+        schema=sample_schema,
+        question="total sales?",
+        previous_code="result = df['sales'].summ()",
+        error_message="AttributeError: summ",
+        client=client,
+    )
+
+    assert isinstance(result, FixedCode)
+    assert result.code == "result = df['sales'].sum()"
+
+
+def test_fix_code_includes_traceback_in_prompt(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(_fixer_payload())
+
+    fix_code(
+        schema=sample_schema,
+        question="q",
+        previous_code="bad",
+        error_message="err",
+        error_traceback="Traceback (most recent call last):\n  ...",
+        previous_errors=["first attempt failed"],
+        client=client,
+    )
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    user_msg = kwargs["messages"][1]["content"]
+    assert "Traceback" in user_msg
+    assert "first attempt failed" in user_msg
+    assert "Failed code" in user_msg
+
+
+def test_fix_code_uses_json_mode(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response(_fixer_payload())
+    fix_code(
+        schema=sample_schema,
+        question="q",
+        previous_code="bad",
+        error_message="e",
+        client=client,
+    )
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert kwargs["response_format"] == {"type": "json_object"}
+
+
+def test_fix_code_raises_on_invalid_json(sample_schema: DatasetSchema) -> None:
+    client = MagicMock()
+    client.chat.completions.create.return_value = _fake_response("not json")
+    with pytest.raises(LLMError, match="Fixer returned invalid"):
+        fix_code(
+            schema=sample_schema,
+            question="q",
+            previous_code="bad",
+            error_message="e",
+            client=client,
+        )

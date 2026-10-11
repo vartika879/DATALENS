@@ -19,6 +19,7 @@ DEFAULT_MODEL = "openai/gpt-oss-20b"
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _SYSTEM_PROMPT_FILE = "generate_code_v1.txt"
+_FIXER_PROMPT_FILE = "fixer_v1.txt"
 
 
 class LLMError(Exception):
@@ -113,6 +114,115 @@ def plan_question(
         return PlannerOutput.model_validate_json(cleaned)
     except ValidationError as exc:
         raise LLMError(f"Planner returned invalid structured output: {exc}") from exc
+
+
+class FixedCode(BaseModel):
+    """Structured output from the fixer LLM call."""
+
+    code: str = Field(..., min_length=1)
+    explanation: str = Field(..., min_length=1)
+
+
+def _build_fixer_user_prompt(
+    schema: DatasetSchema,
+    question: str,
+    previous_code: str,
+    error_message: str,
+    error_traceback: str | None,
+    previous_errors: list[str],
+) -> str:
+    """Compose the fixer user message from failure context."""
+    columns_desc = "\n".join(
+        f"- {c.name} ({c.dtype}), nulls: {c.null_count}/{schema.row_count}" for c in schema.columns
+    )
+
+    parts = [
+        f"Question: {question}",
+        f"CSV schema:\nfile: {schema.file_name}\nrows: {schema.row_count}\n"
+        f"columns:\n{columns_desc}",
+        f"Failed code:\n{previous_code}",
+        f"Error message:\n{error_message}",
+    ]
+
+    if error_traceback:
+        parts.append(f"Traceback:\n{error_traceback}")
+
+    if previous_errors:
+        earlier = "\n".join(f"- {e}" for e in previous_errors)
+        parts.append(f"Earlier errors from previous attempts:\n{earlier}")
+
+    return "\n\n".join(parts)
+
+
+def fix_code(
+    schema: DatasetSchema,
+    question: str,
+    previous_code: str,
+    error_message: str,
+    error_traceback: str | None = None,
+    previous_errors: list[str] | None = None,
+    *,
+    model: str = DEFAULT_MODEL,
+    client: Groq | None = None,
+) -> FixedCode:
+    """Ask the LLM to repair code that failed during execution.
+
+    Args:
+        schema: The dataset schema.
+        question: Original user question.
+        previous_code: The code that failed.
+        error_message: The exception message.
+        error_traceback: The full Python traceback (optional).
+        previous_errors: Errors from earlier repair attempts (optional).
+        model: Groq model name.
+        client: Optional pre-built Groq client (for tests).
+
+    Returns:
+        A validated FixedCode object.
+
+    Raises:
+        LLMError: On API failure, empty response, or invalid JSON.
+    """
+    if client is None:
+        settings = get_settings()
+        client = Groq(api_key=settings.groq_api_key)
+
+    system_prompt = _load_system_prompt(_FIXER_PROMPT_FILE)
+    user_prompt = _build_fixer_user_prompt(
+        schema=schema,
+        question=question,
+        previous_code=previous_code,
+        error_message=error_message,
+        error_traceback=error_traceback,
+        previous_errors=previous_errors or [],
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise LLMError(f"Groq API call failed: {exc}") from exc
+
+    if not response.choices:
+        raise LLMError("LLM returned no choices")
+
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise LLMError("LLM returned empty content")
+
+    cleaned = _strip_code_fences(content)
+
+    try:
+        return FixedCode.model_validate_json(cleaned)
+    except ValidationError as exc:
+        raise LLMError(f"Fixer returned invalid structured output: {exc}") from exc
 
 
 def _load_system_prompt(name: str = _SYSTEM_PROMPT_FILE) -> str:

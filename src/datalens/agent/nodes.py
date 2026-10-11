@@ -7,7 +7,7 @@ in isolation before real logic lands.
 
 from datalens.agent.state import AgentState
 from datalens.executor import execute_code
-from datalens.llm import LLMError, generate_code, plan_question
+from datalens.llm import LLMError, fix_code, generate_code, plan_question
 from datalens.registry import get_dataset
 
 # Maximum number of repair attempts after the initial execution.
@@ -125,11 +125,50 @@ def executor_node(state: AgentState) -> dict:
 
 
 def fixer_node(state: AgentState) -> dict:
-    """Attempt to repair a failed execution."""
-    retries = state.get("retry_count", 0) + 1
-    errors = list(state.get("previous_errors", []))
-    errors.append(state.get("execution_error") or "unknown error")
-    return {"retry_count": retries, "previous_errors": errors}
+    """Attempt to repair code that failed execution.
+
+    Reads the failed code, its traceback, and any earlier errors, then asks
+    the LLM for a corrected version. Increments retry_count and records the
+    error so the next attempt can see what has already been tried.
+    """
+    dataset = get_dataset(state["dataset_id"])
+
+    failed_code = state.get("code", "")
+    error_message = state.get("execution_error") or "unknown error"
+    error_traceback = state.get("execution_traceback")
+    previous_errors = list(state.get("previous_errors", []))
+
+    try:
+        fixed = fix_code(
+            schema=dataset.schema,
+            question=state["question"],
+            previous_code=failed_code,
+            error_message=error_message,
+            error_traceback=error_traceback,
+            previous_errors=previous_errors,
+        )
+    except LLMError as exc:
+        # Fixer itself failed — record and let the router decide.
+        return {
+            "retry_count": state.get("retry_count", 0) + 1,
+            "previous_errors": previous_errors + [error_message],
+            "execution_error": f"fixer failed: {exc}",
+        }
+
+    return {
+        "code": fixed.code,
+        "explanation": fixed.explanation,
+        "previous_code": failed_code,
+        "retry_count": state.get("retry_count", 0) + 1,
+        "previous_errors": previous_errors + [error_message],
+        # Reset executor outputs so the retry starts clean.
+        "execution_status": "",
+        "result_type": None,
+        "result_data": None,
+        "result_repr": None,
+        "execution_error": None,
+        "execution_traceback": None,
+    }
 
 
 def summarizer_node(state: AgentState) -> dict:
