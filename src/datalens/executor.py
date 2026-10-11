@@ -119,7 +119,14 @@ def _serialize_result(value: Any) -> tuple[str, Any]:
 
 
 def _format_repr(value: Any) -> str:
-    """Short, human-readable representation, capped at MAX_RESULT_REPR_CHARS."""
+    """Short, human-readable representation, capped at MAX_RESULT_REPR_CHARS.
+
+    numpy scalars are converted to native Python first so the repr is clean
+    (``57500.0`` instead of ``np.float64(57500.0)``). DataFrames and Series
+    keep their natural pandas repr.
+    """
+    if isinstance(value, (np.integer, np.floating, np.bool_)):
+        value = sanitize_for_json(value)
     try:
         text = repr(value)
     except Exception:  # noqa: BLE001 — repr can raise on odd objects

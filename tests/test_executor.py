@@ -142,3 +142,15 @@ def test_sum_is_allowed(df: pd.DataFrame) -> None:
 def test_result_repr_is_present_on_success(df: pd.DataFrame) -> None:
     result = execute_code("result = 42", df)
     assert result.result_repr == "42"
+
+
+def test_result_repr_is_present_on_success(df: pd.DataFrame) -> None:
+    result = execute_code("result = 42", df)
+    assert result.result_repr == "42"
+
+
+def test_numpy_scalar_repr_is_clean(df: pd.DataFrame) -> None:
+    """numpy scalars must not leak into repr — should be plain Python numbers."""
+    result = execute_code("result = df['sales'].sum()", df)
+    assert "np." not in (result.result_repr or "")
+    assert "numpy" not in (result.result_repr or "")
