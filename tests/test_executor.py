@@ -92,11 +92,13 @@ def test_runtime_error_is_captured(df: pd.DataFrame) -> None:
     assert "nope" in (result.error_message or "")
     assert result.error_traceback is not None
 
+
 def test_open_is_blocked(df: pd.DataFrame) -> None:
     result = execute_code("result = open('/etc/passwd').read()", df)
 
     assert result.status == "error"
     assert result.error_type == "ASTCheckError"
+
 
 def test_missing_result_variable_is_captured(df: pd.DataFrame) -> None:
     result = execute_code("x = df['sales'].sum()", df)

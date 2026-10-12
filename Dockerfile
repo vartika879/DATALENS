@@ -12,6 +12,7 @@ RUN uv sync --frozen --all-groups --no-install-project
 COPY src/ ./src/
 COPY tests/ ./tests/
 COPY README.md ./
+COPY evals/ ./evals/
 COPY app.py ./
 RUN uv sync --frozen --all-groups
 
