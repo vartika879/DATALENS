@@ -7,10 +7,15 @@ SECURITY NOTE: This script runs INSIDE the sandbox container. The
 container itself provides the isolation (no network, no root, read-only
 filesystem, resource limits). This script does not need to be bulletproof
 — its job is to run code, and the container constrains what the code can do.
+
+An inline AST check provides a cheap first layer of defense. It cannot
+import ``datalens.ast_check`` because the sandbox image is minimal
+(pandas + numpy only, no datalens package).
 """
 
 from __future__ import annotations
 
+import ast
 import json
 import math
 import sys
@@ -24,6 +29,53 @@ import pandas as pd
 MAX_RESULT_ROWS = 100
 MAX_RESULT_REPR_CHARS = 10_000
 CSV_PATH = "/data/input.csv"
+
+# Inline blocklists — mirror of datalens.ast_check, kept small on purpose.
+_BLOCKED_NAMES = frozenset(
+    {
+        "__builtins__",
+        "__import__",
+        "open",
+        "eval",
+        "exec",
+        "compile",
+        "input",
+        "globals",
+        "locals",
+        "getattr",
+        "setattr",
+        "delattr",
+    }
+)
+
+_BLOCKED_ATTRS = frozenset(
+    {
+        "__class__",
+        "__bases__",
+        "__mro__",
+        "__subclasses__",
+        "__globals__",
+        "__builtins__",
+        "__code__",
+    }
+)
+
+
+def _ast_check(code: str) -> str | None:
+    """Return an error message if the code fails the AST check, else None."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None  # compile() will surface the syntax error
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            return "imports are blocked in the sandbox"
+        if isinstance(node, ast.Name) and node.id in _BLOCKED_NAMES:
+            return f"blocked name: {node.id}"
+        if isinstance(node, ast.Attribute) and node.attr in _BLOCKED_ATTRS:
+            return f"blocked attribute: {node.attr}"
+    return None
 
 
 def _sanitize(value: Any) -> Any:
@@ -98,6 +150,16 @@ def _error_response(exc: BaseException, started: float) -> dict:
     }
 
 
+def _ast_error(message: str, started: float) -> dict:
+    return {
+        "status": "error",
+        "error_type": "ASTCheckError",
+        "error_message": message,
+        "error_traceback": None,
+        "duration_ms": (time.perf_counter() - started) * 1000.0,
+    }
+
+
 def main() -> None:
     started = time.perf_counter()
 
@@ -107,6 +169,12 @@ def main() -> None:
         code = payload["code"]
     except Exception as exc:
         print(json.dumps(_error_response(exc, started)))
+        return
+
+    # AST check — cheap first layer before compile/exec.
+    ast_error = _ast_check(code)
+    if ast_error is not None:
+        print(json.dumps(_ast_error(ast_error, started)))
         return
 
     # Allowed builtins — second layer of defense (container is the first).

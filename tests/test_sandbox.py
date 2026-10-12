@@ -85,19 +85,20 @@ def test_missing_result(csv_path: Path) -> None:
 def test_import_is_blocked(csv_path: Path) -> None:
     result = run_in_sandbox("import os\nresult = os.getcwd()", csv_path)
     assert result.status == "error"
-    assert result.error_type in {"ImportError", "ModuleNotFoundError"}
+    # AST check inside the container blocks imports before exec.
+    assert result.error_type == "ASTCheckError"
 
 
 def test_open_is_blocked(csv_path: Path) -> None:
     result = run_in_sandbox("result = open('/etc/passwd').read()", csv_path)
     assert result.status == "error"
-    assert result.error_type == "NameError"
+    assert result.error_type == "ASTCheckError"
 
 
 def test_eval_is_blocked(csv_path: Path) -> None:
     result = run_in_sandbox("result = eval('1+1')", csv_path)
     assert result.status == "error"
-    assert result.error_type == "NameError"
+    assert result.error_type == "ASTCheckError"
 
 
 # --- Timeout ----------------------------------------------------------------

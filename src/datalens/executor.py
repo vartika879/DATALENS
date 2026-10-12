@@ -1,16 +1,21 @@
 """Execute LLM-generated pandas code against a DataFrame.
 
-SECURITY WARNING
-----------------
-This module uses Python's built-in ``exec`` with a restricted ``__builtins__``
-dict. This is NOT a security boundary. ``exec`` can be escaped via object
-introspection (e.g. walking ``__class__.__mro__`` from any object). The
-restricted builtins only stop accidental ``import`` / ``open`` calls; they
-do not stop a determined attacker.
+SECURITY NOTES
+--------------
+Two execution paths are supported:
 
-Real isolation is added in Phase 3 (Docker sandbox: no network, resource
-limits, read-only filesystem, non-root user). Until then, do NOT run
-untrusted code through this function in any environment that matters.
+1. **Direct exec** (``use_sandbox=False``, default): Uses Python's built-in
+   ``exec`` with a restricted ``__builtins__`` dict. This is NOT a security
+   boundary. It stops accidental ``import``/``open`` calls but can be
+   escaped via object introspection.
+
+2. **Docker sandbox** (``use_sandbox=True``): Dispatches to
+   ``datalens.sandbox.run_in_sandbox`` for real isolation (no network,
+   resource limits, read-only filesystem, non-root user).
+
+Both paths run an AST static check first (``datalens.ast_check``). The AST
+check is a cheap first layer — it is NOT a security boundary either, but it
+rejects obvious attacks before spawning a container or calling ``exec``.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
+from datalens.ast_check import ASTCheckError, assert_code_is_safe
 from datalens.sandbox import SandboxResult, run_in_sandbox
 from datalens.serialization import sanitize_for_json
 
@@ -32,7 +38,7 @@ from datalens.serialization import sanitize_for_json
 MAX_RESULT_ROWS = 100
 MAX_RESULT_REPR_CHARS = 10_000
 
-# --- Restricted builtins ----------------------------------------------------
+# --- Restricted builtins (direct-exec path only) ----------------------------
 
 _ALLOWED_BUILTINS: dict[str, Any] = {
     "abs": abs,
@@ -138,7 +144,23 @@ def _format_repr(value: Any) -> str:
     return text
 
 
+def _sandbox_result_to_execution(sr: SandboxResult) -> ExecutionResult:
+    """Adapt a SandboxResult to the common ExecutionResult interface."""
+    return ExecutionResult(
+        status=sr.status,
+        result_type=sr.result_type,
+        result_repr=sr.result_repr,
+        result_data=sr.result_data,
+        error_type=sr.error_type,
+        error_message=sr.error_message,
+        error_traceback=sr.error_traceback,
+        duration_ms=sr.duration_ms,
+    )
+
+
 # --- Public API -------------------------------------------------------------
+
+
 def execute_code(
     code: str,
     df: pd.DataFrame,
@@ -169,11 +191,46 @@ def execute_code(
                     "Register the dataset with its source CSV path."
                 ),
             )
+        # AST check before spawning a container (cheap fast-fail).
+        try:
+            assert_code_is_safe(code)
+        except SyntaxError as exc:
+            return ExecutionResult(
+                status="error",
+                error_type="SyntaxError",
+                error_message=str(exc),
+            )
+        except ASTCheckError as exc:
+            return ExecutionResult(
+                status="error",
+                error_type="ASTCheckError",
+                error_message=str(exc),
+            )
+
         sandbox_result = run_in_sandbox(code, csv_path)
         return _sandbox_result_to_execution(sandbox_result)
 
     # --- Direct exec path (dev/test only) -----------------------------------
     started = time.perf_counter()
+
+    # AST check before compiling.
+    try:
+        assert_code_is_safe(code)
+    except SyntaxError as exc:
+        return ExecutionResult(
+            status="error",
+            error_type="SyntaxError",
+            error_message=str(exc),
+            error_traceback=traceback.format_exc(),
+            duration_ms=(time.perf_counter() - started) * 1000.0,
+        )
+    except ASTCheckError as exc:
+        return ExecutionResult(
+            status="error",
+            error_type="ASTCheckError",
+            error_message=str(exc),
+            duration_ms=(time.perf_counter() - started) * 1000.0,
+        )
 
     sandbox: dict[str, Any] = {
         "__builtins__": _ALLOWED_BUILTINS,
@@ -194,7 +251,7 @@ def execute_code(
         )
 
     try:
-        exec(compiled, sandbox)  # noqa: S102 — real isolation lands in Phase 3
+        exec(compiled, sandbox)  # noqa: S102 — sandbox path has real isolation
     except Exception as exc:  # noqa: BLE001 — any runtime failure is captured
         return ExecutionResult(
             status="error",
@@ -222,18 +279,4 @@ def execute_code(
         result_repr=_format_repr(raw),
         result_data=result_data,
         duration_ms=(time.perf_counter() - started) * 1000.0,
-    )
-
-
-def _sandbox_result_to_execution(sr: SandboxResult) -> ExecutionResult:
-    """Adapt a SandboxResult to the common ExecutionResult interface."""
-    return ExecutionResult(
-        status=sr.status,
-        result_type=sr.result_type,
-        result_repr=sr.result_repr,
-        result_data=sr.result_data,
-        error_type=sr.error_type,
-        error_message=sr.error_message,
-        error_traceback=sr.error_traceback,
-        duration_ms=sr.duration_ms,
     )

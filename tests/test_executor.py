@@ -92,6 +92,11 @@ def test_runtime_error_is_captured(df: pd.DataFrame) -> None:
     assert "nope" in (result.error_message or "")
     assert result.error_traceback is not None
 
+def test_open_is_blocked(df: pd.DataFrame) -> None:
+    result = execute_code("result = open('/etc/passwd').read()", df)
+
+    assert result.status == "error"
+    assert result.error_type == "ASTCheckError"
 
 def test_missing_result_variable_is_captured(df: pd.DataFrame) -> None:
     result = execute_code("x = df['sales'].sum()", df)
@@ -102,27 +107,19 @@ def test_missing_result_variable_is_captured(df: pd.DataFrame) -> None:
 
 
 # --- Restricted builtins ----------------------------------------------------
-
-
 def test_import_is_blocked(df: pd.DataFrame) -> None:
     result = execute_code("import os\nresult = os.getcwd()", df)
 
     assert result.status == "error"
-    assert result.error_type in {"ImportError", "ModuleNotFoundError"}
-
-
-def test_open_is_blocked(df: pd.DataFrame) -> None:
-    result = execute_code("result = open('/etc/passwd').read()", df)
-
-    assert result.status == "error"
-    assert result.error_type == "NameError"
+    # AST check runs first — blocks before exec.
+    assert result.error_type == "ASTCheckError"
 
 
 def test_eval_is_blocked(df: pd.DataFrame) -> None:
     result = execute_code("result = eval('1+1')", df)
 
     assert result.status == "error"
-    assert result.error_type == "NameError"
+    assert result.error_type == "ASTCheckError"
 
 
 # --- Allowed builtins -------------------------------------------------------
