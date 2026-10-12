@@ -18,11 +18,13 @@ from __future__ import annotations
 import time
 import traceback
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 
+from datalens.sandbox import SandboxResult, run_in_sandbox
 from datalens.serialization import sanitize_for_json
 
 # --- Limits -----------------------------------------------------------------
@@ -67,7 +69,7 @@ class ExecutionResult:
     full Python traceback string, suitable for the Phase 2 Fixer node.
     """
 
-    status: Literal["success", "error"]
+    status: Literal["success", "error", "timeout"]
     result_type: str | None = None
     result_repr: str | None = None
     result_data: Any = None
@@ -137,23 +139,40 @@ def _format_repr(value: Any) -> str:
 
 
 # --- Public API -------------------------------------------------------------
-
-
-def execute_code(code: str, df: pd.DataFrame) -> ExecutionResult:
+def execute_code(
+    code: str,
+    df: pd.DataFrame,
+    *,
+    use_sandbox: bool = False,
+    csv_path: Path | None = None,
+) -> ExecutionResult:
     """Run ``code`` against ``df`` and capture the ``result`` variable.
-
-    The code is expected to assign its final answer to a variable named
-    ``result``. The DataFrame is available as ``df``. ``pd`` and ``np`` are
-    importable by name (already imported).
 
     Args:
         code: Python source to execute.
-        df: DataFrame exposed to the code as ``df``.
+        df: DataFrame exposed to the code as ``df`` (used in direct-exec mode).
+        use_sandbox: If True, dispatch to the Docker sandbox instead of exec.
+            Requires ``csv_path`` to be provided.
+        csv_path: Host path to the CSV (required for sandbox mode).
 
     Returns:
-        ExecutionResult — either success with serialized data, or error with
-        a full traceback string.
+        ExecutionResult.
     """
+    # --- Sandbox path (real isolation) --------------------------------------
+    if use_sandbox:
+        if csv_path is None:
+            return ExecutionResult(
+                status="error",
+                error_type="SandboxConfigError",
+                error_message=(
+                    "use_sandbox=True requires csv_path. "
+                    "Register the dataset with its source CSV path."
+                ),
+            )
+        sandbox_result = run_in_sandbox(code, csv_path)
+        return _sandbox_result_to_execution(sandbox_result)
+
+    # --- Direct exec path (dev/test only) -----------------------------------
     started = time.perf_counter()
 
     sandbox: dict[str, Any] = {
@@ -203,4 +222,18 @@ def execute_code(code: str, df: pd.DataFrame) -> ExecutionResult:
         result_repr=_format_repr(raw),
         result_data=result_data,
         duration_ms=(time.perf_counter() - started) * 1000.0,
+    )
+
+
+def _sandbox_result_to_execution(sr: SandboxResult) -> ExecutionResult:
+    """Adapt a SandboxResult to the common ExecutionResult interface."""
+    return ExecutionResult(
+        status=sr.status,
+        result_type=sr.result_type,
+        result_repr=sr.result_repr,
+        result_data=sr.result_data,
+        error_type=sr.error_type,
+        error_message=sr.error_message,
+        error_traceback=sr.error_traceback,
+        duration_ms=sr.duration_ms,
     )

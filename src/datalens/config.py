@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     )
 
     groq_api_key: str = Field(..., min_length=10)
+    use_sandbox: bool = False
 
 
 @lru_cache(maxsize=1)

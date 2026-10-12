@@ -58,3 +58,17 @@ def test_clear_registry_removes_all(df, schema) -> None:
     clear_registry()
     with pytest.raises(DatasetNotFoundError):
         get_dataset(did)
+
+
+def test_register_with_csv_path(df, schema, tmp_path) -> None:
+    csv = tmp_path / "data.csv"
+    csv.write_text("a\n1\n")
+    did = register_dataset(df, schema, csv_path=csv)
+    retrieved = get_dataset(did)
+    assert retrieved.csv_path == csv
+
+
+def test_register_without_csv_path(df, schema) -> None:
+    did = register_dataset(df, schema)
+    retrieved = get_dataset(did)
+    assert retrieved.csv_path is None

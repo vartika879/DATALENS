@@ -10,6 +10,7 @@ Phase 4 will replace this with database-backed storage. The interface
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from uuid import uuid4
 
 import pandas as pd
@@ -23,6 +24,7 @@ class RegisteredDataset:
 
     df: pd.DataFrame
     schema: DatasetSchema
+    csv_path: Path | None = None
 
 
 class DatasetNotFoundError(Exception):
@@ -32,10 +34,20 @@ class DatasetNotFoundError(Exception):
 _REGISTRY: dict[str, RegisteredDataset] = {}
 
 
-def register_dataset(df: pd.DataFrame, schema: DatasetSchema) -> str:
-    """Store a DataFrame and return a fresh dataset_id."""
+def register_dataset(
+    df: pd.DataFrame,
+    schema: DatasetSchema,
+    csv_path: Path | None = None,
+) -> str:
+    """Store a DataFrame and return a fresh dataset_id.
+
+    Args:
+        df: The loaded DataFrame.
+        schema: Extracted schema.
+        csv_path: Optional path to the source CSV (used by the sandbox).
+    """
     dataset_id = uuid4().hex
-    _REGISTRY[dataset_id] = RegisteredDataset(df=df, schema=schema)
+    _REGISTRY[dataset_id] = RegisteredDataset(df=df, schema=schema, csv_path=csv_path)
     return dataset_id
 
 

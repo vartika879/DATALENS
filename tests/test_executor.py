@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from datalens.executor import MAX_RESULT_ROWS, execute_code
+from datalens.sandbox import sandbox_image_exists
 
 
 @pytest.fixture
@@ -149,3 +150,35 @@ def test_numpy_scalar_repr_is_clean(df: pd.DataFrame) -> None:
     result = execute_code("result = df['sales'].sum()", df)
     assert "np." not in (result.result_repr or "")
     assert "numpy" not in (result.result_repr or "")
+
+
+# --- Sandbox dispatch -------------------------------------------------------
+
+
+def test_execute_code_sandbox_requires_csv_path(df: pd.DataFrame) -> None:
+    result = execute_code("result = 1", df, use_sandbox=True)
+    assert result.status == "error"
+    assert result.error_type == "SandboxConfigError"
+    assert "csv_path" in (result.error_message or "")
+
+
+# --- Real sandbox (requires Docker image) ----------------------------------
+
+sandbox_available = pytest.mark.skipif(
+    not sandbox_image_exists(),
+    reason="Sandbox image not built",
+)
+
+
+@sandbox_available
+def test_execute_code_sandbox_real(tmp_path, df):
+    csv = tmp_path / "data.csv"
+    df.to_csv(csv, index=False)
+    result = execute_code(
+        "result = df['sales'].sum()",
+        df,
+        use_sandbox=True,
+        csv_path=csv,
+    )
+    assert result.status == "success"
+    assert result.result_data == 1000

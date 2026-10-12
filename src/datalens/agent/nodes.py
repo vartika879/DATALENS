@@ -6,6 +6,7 @@ in isolation before real logic lands.
 """
 
 from datalens.agent.state import AgentState
+from datalens.config import get_settings
 from datalens.executor import execute_code
 from datalens.llm import LLMError, fix_code, generate_code, plan_question, summarize
 from datalens.registry import get_dataset
@@ -110,8 +111,13 @@ def executor_node(state: AgentState) -> dict:
 
     # Case 2 & 3: run the code.
     dataset = get_dataset(state["dataset_id"])
-    result = execute_code(code, dataset.df)
-
+    settings = get_settings()
+    result = execute_code(
+        code,
+        dataset.df,
+        use_sandbox=settings.use_sandbox,
+        csv_path=dataset.csv_path,
+    )
     if result.status == "success":
         return {
             "execution_status": "success",

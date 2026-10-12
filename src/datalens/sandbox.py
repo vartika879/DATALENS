@@ -149,7 +149,6 @@ def run_in_sandbox(
             error_traceback=result.stdout[:1000],
             duration_ms=duration_ms,
         )
-
     return SandboxResult(
         status=parsed.get("status", "error"),
         result_type=parsed.get("result_type"),
@@ -158,5 +157,7 @@ def run_in_sandbox(
         error_type=parsed.get("error_type"),
         error_message=parsed.get("error_message"),
         error_traceback=parsed.get("error_traceback"),
-        duration_ms=parsed.get("duration_ms", duration_ms),
+        # Always report host-side wall-clock time. The in-container value
+        # measures only code execution, not container startup + IPC.
+        duration_ms=duration_ms,
     )
