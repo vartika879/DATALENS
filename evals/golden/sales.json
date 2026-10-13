@@ -1,0 +1,50 @@
+{
+    "name": "sales",
+    "csv_filename": "sales.csv",
+    "description": "Small e-commerce sales dataset for eval baseline.",
+    "questions": [
+        {
+            "id": "sales_q1",
+            "question": "What is the total revenue (sum of quantity times unit_price)?",
+            "difficulty": "easy",
+            "expected_kind": "scalar",
+            "expected": 2600,
+            "notes": "200+250+300+500+200+250+400+500"
+        },
+        {
+            "id": "sales_q2",
+            "question": "Which city has the highest total revenue?",
+            "difficulty": "medium",
+            "expected_kind": "string",
+            "expected": "Delhi",
+            "notes": "Mumbai=750, Delhi=950, Bangalore=900"
+        },
+        {
+            "id": "sales_q3",
+            "question": "How many orders are in the dataset?",
+            "difficulty": "easy",
+            "expected_kind": "scalar",
+            "expected": 8
+        },
+        {
+            "id": "sales_q4",
+            "question": "What is the average quantity per order?",
+            "difficulty": "easy",
+            "expected_kind": "scalar",
+            "expected": 1.875,
+            "rel_tolerance": 0.001,
+            "notes": "15 / 8"
+        },
+        {
+            "id": "sales_q5",
+            "question": "List all unique cities in the dataset.",
+            "difficulty": "easy",
+            "expected_kind": "list",
+            "expected": [
+                "Bangalore",
+                "Delhi",
+                "Mumbai"
+            ]
+        }
+    ]
+}
