@@ -16,6 +16,19 @@ router = APIRouter(tags=["upload"])
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
+def _looks_like_text(content: bytes, sample_size: int = 4096) -> bool:
+    """Heuristic: reject obviously binary content."""
+    sample = content[:sample_size]
+    if b"\x00" in sample:
+        return False
+    try:
+        text = sample.decode("latin-1")
+    except Exception:
+        return False
+    printable = sum(1 for ch in text if ch.isprintable() or ch in "\r\n\t")
+    return printable / max(len(text), 1) > 0.85
+
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload_csv(
     file: UploadFile = File(...),
@@ -39,7 +52,11 @@ async def upload_csv(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File exceeds {MAX_UPLOAD_BYTES} bytes.",
         )
-
+    if not _looks_like_text(content):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File does not look like text (possibly binary).",
+        )
     csv_path = save_uploaded_csv(file.filename, content)
 
     try:

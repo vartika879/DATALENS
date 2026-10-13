@@ -111,3 +111,52 @@ def test_extract_schema_handles_unicode_column_names(tmp_path: Path) -> None:
     schema = extract_schema(csv)
 
     assert {c.name for c in schema.columns} == {"नाम", "उम्र"}
+
+
+# --- Hardening: encoding, BOM, columns --------------------------------------
+
+
+def test_extract_schema_strips_utf8_bom(tmp_path: Path) -> None:
+    """Excel adds a BOM; the first column must not start with \\ufeff."""
+    csv = tmp_path / "bom.csv"
+    csv.write_bytes("\ufeffname,age\nAlice,30\n".encode("utf-8"))
+    schema = extract_schema(csv)
+    assert {c.name for c in schema.columns} == {"name", "age"}
+
+
+def test_extract_schema_falls_back_to_latin1(tmp_path: Path) -> None:
+    """A file with latin-1 bytes should still parse."""
+    csv = tmp_path / "latin.csv"
+    csv.write_bytes("name\nJosé\n".encode("latin-1"))
+    schema = extract_schema(csv)
+    assert schema.column_count == 1
+
+
+def test_extract_schema_rejects_duplicate_columns(tmp_path: Path) -> None:
+    csv = tmp_path / "dup.csv"
+    csv.write_text("a,a,b\n1,2,3\n")
+    with pytest.raises(SchemaExtractionError, match="duplicate column names"):
+        extract_schema(csv)
+
+
+def test_extract_schema_rejects_unnamed_columns(tmp_path: Path) -> None:
+    csv = tmp_path / "unnamed.csv"
+    csv.write_text(",b,c\n1,2,3\n")
+    with pytest.raises(SchemaExtractionError, match="unnamed columns"):
+        extract_schema(csv)
+
+
+def test_extract_schema_rejects_blank_column_names(tmp_path: Path) -> None:
+    csv = tmp_path / "blank.csv"
+    csv.write_text("a,   ,c\n1,2,3\n")
+    with pytest.raises(SchemaExtractionError, match="blank column names"):
+        extract_schema(csv)
+
+
+def test_extract_schema_rejects_too_many_columns(tmp_path: Path) -> None:
+    csv = tmp_path / "wide.csv"
+    header = ",".join(f"c{i}" for i in range(600))
+    row = ",".join("1" for _ in range(600))
+    csv.write_text(f"{header}\n{row}\n")
+    with pytest.raises(SchemaExtractionError, match="exceeds limit"):
+        extract_schema(csv)

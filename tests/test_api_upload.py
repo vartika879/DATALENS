@@ -62,3 +62,29 @@ def test_upload_rejects_empty_file(client: TestClient) -> None:
         files={"file": ("empty.csv", io.BytesIO(b""), "text/csv")},
     )
     assert response.status_code == 400
+
+
+def test_upload_rejects_binary_content(client: TestClient) -> None:
+    """A .csv with binary bytes should be rejected."""
+    binary = b"\x00\x01\x02\x03\xff\xfe\xfd\xfc" * 100
+    resp = client.post(
+        "/upload",
+        files={"file": ("fake.csv", io.BytesIO(binary), "text/csv")},
+    )
+    assert resp.status_code == 400
+    assert "binary" in resp.json()["detail"].lower()
+
+
+def test_upload_rejects_duplicate_columns(client: TestClient) -> None:
+    csv = "a,a,b\n1,2,3\n"
+    resp = client.post("/upload", files=_csv_file(csv, name="dup.csv"))
+    assert resp.status_code == 400
+    assert "duplicate" in resp.json()["detail"].lower()
+
+
+def test_upload_handles_bom(client: TestClient) -> None:
+    """Upload should succeed even with a UTF-8 BOM."""
+    csv = "\ufeffname,age\nAlice,30\n"
+    resp = client.post("/upload", files=_csv_file(csv, name="bom.csv"))
+    assert resp.status_code == 200
+    assert resp.json()["column_count"] == 2
