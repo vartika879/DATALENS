@@ -293,3 +293,10 @@ This is a personal portfolio project under active development. Issues and sugges
 ## License
 
 MIT
+
+
+## Known limitations (Phase 4)
+
+- **Single API key, single-tenant.** All users share one API key. There is
+  no per-user isolation of datasets, sessions, or history. Multi-tenancy
+  is planned for a future phase.
