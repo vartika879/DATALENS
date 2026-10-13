@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from datalens import __version__
-from datalens.api.routes import ask, health, session, upload
+from datalens.api.routes import ask, feedback, health, history, session, upload
 from datalens.db.engine import create_db_and_tables
 
 
@@ -38,5 +38,6 @@ def create_app() -> FastAPI:
     app.include_router(upload.router)
     app.include_router(session.router)
     app.include_router(ask.router)
-
+    app.include_router(history.router)
+    app.include_router(feedback.router)
     return app
