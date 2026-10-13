@@ -11,16 +11,14 @@ RUN uv sync --frozen --all-groups --no-install-project
 
 COPY src/ ./src/
 COPY tests/ ./tests/
-COPY README.md ./
 COPY evals/ ./evals/
+COPY README.md ./
 COPY app.py ./
 RUN uv sync --frozen --all-groups
 
-# Ownership appuser ko do — cache, venv sab likh sake
+RUN mkdir -p /app/data/uploads && chown -R appuser:appuser /app/data
 RUN chown -R appuser:appuser /app
 
 ENV UV_NO_SYNC=1
-
 USER appuser
-
 CMD ["/app/.venv/bin/pytest", "-v"]

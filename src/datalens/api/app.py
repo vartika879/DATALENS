@@ -8,10 +8,21 @@ The API is intentionally separate from the Streamlit UI so that:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+
 from fastapi import FastAPI
 
 from datalens import __version__
-from datalens.api.routes import health
+from datalens.api.routes import ask, health, session, upload
+from datalens.db.engine import create_db_and_tables
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Ensure DB tables exist on startup."""
+    create_db_and_tables()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -20,8 +31,12 @@ def create_app() -> FastAPI:
         title="DataLens API",
         version=__version__,
         description="Agentic natural-language data analysis over CSV files.",
+        lifespan=_lifespan,
     )
 
     app.include_router(health.router)
+    app.include_router(upload.router)
+    app.include_router(session.router)
+    app.include_router(ask.router)
 
     return app
