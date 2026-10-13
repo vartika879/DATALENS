@@ -21,7 +21,7 @@ def _load_questions_module(name: str):
     return importlib.import_module(f"evals.questions.{name}")
 
 
-@pytest.mark.parametrize("name", ["sales", "titanic"])
+@pytest.mark.parametrize("name", ["sales", "titanic", "ecommerce"])
 def test_golden_matches_reference(name: str) -> None:
     """Every expected value in the golden JSON must match the reference."""
     golden_path = GOLDEN_DIR / f"{name}.json"
