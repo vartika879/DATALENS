@@ -22,3 +22,10 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - DATALENS_DB_URL=sqlite:////app/data/datalens.db
+    volumes:
+      - datalens-data:/app/data
+
+volumes:
+  datalens-data:
