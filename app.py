@@ -51,17 +51,20 @@ with st.sidebar:
     st.header("Dataset")
     uploaded = st.file_uploader("Upload a CSV", type=["csv"])
 
-    if uploaded is not None and client is not None:
-        if uploaded.name != st.session_state.dataset_name:
-            with st.spinner("Uploading and analyzing schema..."):
-                try:
-                    resp = client.upload(uploaded.name, uploaded.getvalue())
-                    st.session_state.dataset_id = resp["dataset_id"]
-                    st.session_state.dataset_name = uploaded.name
-                    st.session_state.session_id = None  # new dataset → new session
-                    st.success(f"Loaded {resp['row_count']} rows × {resp['column_count']} columns")
-                except DataLensAPIError as exc:
-                    st.error(f"Upload failed: {exc.detail}")
+    if (
+        uploaded is not None
+        and client is not None
+        and uploaded.name != st.session_state.dataset_name
+    ):
+        with st.spinner("Uploading and analyzing schema..."):
+            try:
+                resp = client.upload(uploaded.name, uploaded.getvalue())
+                st.session_state.dataset_id = resp["dataset_id"]
+                st.session_state.dataset_name = uploaded.name
+                st.session_state.session_id = None  # new dataset → new session
+                st.success(f"Loaded {resp['row_count']} rows × {resp['column_count']} columns")
+            except DataLensAPIError as exc:
+                st.error(f"Upload failed: {exc.detail}")
 
     if st.session_state.dataset_name:
         st.caption(f"Current dataset: **{st.session_state.dataset_name}**")
@@ -163,5 +166,5 @@ with tab_history:
                             for r in runs
                         ]
                     ),
-                    use_container_width=True,
+                    width="stretch",
                 )
