@@ -82,6 +82,7 @@ def main() -> None:
         ("sales", "Small e-commerce sales dataset for eval baseline."),
         ("titanic", "Classic Titanic passenger dataset."),
         ("ecommerce", "E-commerce orders with dates for time-series eval."),
+        ("census", "Indian state-wise census data (2021)."),
     ]
     for name, desc in targets:
         path = build_one(name, desc)

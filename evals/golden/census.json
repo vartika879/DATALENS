@@ -1,0 +1,158 @@
+{
+  "name": "census",
+  "csv_filename": "census.csv",
+  "description": "Indian state-wise census data (2021).",
+  "questions": [
+    {
+      "id": "census_q1",
+      "question": "What is the total population across all states?",
+      "difficulty": "easy",
+      "expected_kind": "scalar",
+      "expected": 1163270452,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q2",
+      "question": "How many states are in the dataset?",
+      "difficulty": "easy",
+      "expected_kind": "scalar",
+      "expected": 20,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q3",
+      "question": "Which state has the highest population?",
+      "difficulty": "easy",
+      "expected_kind": "string",
+      "expected": "Uttar Pradesh",
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q4",
+      "question": "Which state has the highest literacy rate?",
+      "difficulty": "medium",
+      "expected_kind": "string",
+      "expected": "Kerala",
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q5",
+      "question": "What is the average literacy rate across all states?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 74.945,
+      "rel_tolerance": 0.005,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q6",
+      "question": "What is the average sex ratio across all states?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 950.6,
+      "rel_tolerance": 0.005,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q7",
+      "question": "What is the total population of states in the South region?",
+      "difficulty": "hard",
+      "expected_kind": "scalar",
+      "expected": 251038861,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09,
+      "notes": "Filter by region column, then sum population."
+    },
+    {
+      "id": "census_q8",
+      "question": "How many states are in the North region?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 5,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q9",
+      "question": "Which state has the highest urban percentage?",
+      "difficulty": "medium",
+      "expected_kind": "string",
+      "expected": "Delhi",
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q10",
+      "question": "List all states with a literacy rate above 80%.",
+      "difficulty": "hard",
+      "expected_kind": "list",
+      "expected": [
+        "Delhi",
+        "Goa",
+        "Kerala",
+        "Maharashtra",
+        "Tamil Nadu"
+      ],
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09,
+      "notes": "Filter literacy_rate > 80, return state names."
+    },
+    {
+      "id": "census_q11",
+      "question": "List all unique regions in the dataset.",
+      "difficulty": "easy",
+      "expected_kind": "list",
+      "expected": [
+        "Central",
+        "East",
+        "North",
+        "North-East",
+        "South",
+        "West"
+      ],
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q12",
+      "question": "Which state has the lowest sex ratio?",
+      "difficulty": "medium",
+      "expected_kind": "string",
+      "expected": "Delhi",
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q13",
+      "question": "Which state has the largest population?",
+      "difficulty": "easy",
+      "expected_kind": "string",
+      "expected": "Uttar Pradesh",
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q14",
+      "question": "What is the average urban percentage across South region states?",
+      "difficulty": "hard",
+      "expected_kind": "scalar",
+      "expected": 40.64,
+      "rel_tolerance": 0.005,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "census_q15",
+      "question": "What is the profit margin per state?",
+      "difficulty": "adversarial",
+      "expected_kind": "string",
+      "expected": "no profit column available",
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09,
+      "notes": "Adversarial: dataset has no profit column; agent should refuse."
+    }
+  ]
+}

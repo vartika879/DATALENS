@@ -1,0 +1,21 @@
+state,year,population,literacy_rate,sex_ratio,urban_percent,region
+Maharashtra,2021,112374333,82.3,929,45.2,West
+Uttar Pradesh,2021,199812341,67.7,912,22.3,North
+Bihar,2021,104099452,61.8,918,11.3,East
+West Bengal,2021,91276115,76.3,950,31.9,East
+Madhya Pradesh,2021,72626809,69.3,931,27.6,Central
+Tamil Nadu,2021,72147030,80.1,996,48.4,South
+Rajasthan,2021,68548437,66.1,928,24.9,North
+Karnataka,2021,61095297,75.4,973,38.7,South
+Gujarat,2021,60439692,78.0,919,42.6,West
+Andhra Pradesh,2021,49386799,67.0,993,29.5,South
+Odisha,2021,41974218,72.9,979,16.7,East
+Telangana,2021,35003674,72.8,988,38.9,South
+Kerala,2021,33406061,94.0,1084,47.7,South
+Jharkhand,2021,32988134,66.4,948,24.1,East
+Assam,2021,31205576,72.2,958,14.1,North-East
+Punjab,2021,27743338,75.8,895,37.5,North
+Chhattisgarh,2021,25545198,70.3,991,23.2,Central
+Haryana,2021,25351462,75.6,879,34.9,North
+Delhi,2021,16787941,86.2,868,97.5,North
+Goa,2021,1458545,88.7,973,62.2,West
