@@ -1,0 +1,147 @@
+{
+  "name": "titanic",
+  "csv_filename": "titanic.csv",
+  "description": "Classic Titanic passenger dataset.",
+  "questions": [
+    {
+      "id": "titanic_q1",
+      "question": "How many passengers survived?",
+      "difficulty": "easy",
+      "expected_kind": "scalar",
+      "expected": 11,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q2",
+      "question": "What fraction of passengers survived?",
+      "difficulty": "easy",
+      "expected_kind": "scalar",
+      "expected": 0.44,
+      "rel_tolerance": 0.001,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q3",
+      "question": "How many passengers were female?",
+      "difficulty": "easy",
+      "expected_kind": "scalar",
+      "expected": 11,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q4",
+      "question": "What was the survival rate among female passengers?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 0.7272727272727273,
+      "rel_tolerance": 0.001,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q5",
+      "question": "What was the survival rate among male passengers?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 0.21428571428571427,
+      "rel_tolerance": 0.001,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q6",
+      "question": "What was the average age of passengers?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 27.09090909090909,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q7",
+      "question": "What was the average fare paid?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 21.901600000000002,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q8",
+      "question": "Which passenger class had the highest survival rate?",
+      "difficulty": "hard",
+      "expected_kind": "scalar",
+      "expected": 2,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09,
+      "notes": "Return the pclass number (1, 2, or 3)."
+    },
+    {
+      "id": "titanic_q9",
+      "question": "How many passengers were in first class?",
+      "difficulty": "easy",
+      "expected_kind": "scalar",
+      "expected": 5,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q10",
+      "question": "List all unique embarkation ports in alphabetical order.",
+      "difficulty": "medium",
+      "expected_kind": "list",
+      "expected": [
+        "C",
+        "Q",
+        "S"
+      ],
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q11",
+      "question": "What was the age of the oldest passenger who survived?",
+      "difficulty": "hard",
+      "expected_kind": "scalar",
+      "expected": 58.0,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q12",
+      "question": "What was the age of the youngest passenger?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 2.0,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q13",
+      "question": "How many passengers have a missing age value?",
+      "difficulty": "medium",
+      "expected_kind": "scalar",
+      "expected": 3,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q14",
+      "question": "What was the total fare collected across all passengers?",
+      "difficulty": "easy",
+      "expected_kind": "scalar",
+      "expected": 547.5400000000001,
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    },
+    {
+      "id": "titanic_q15",
+      "question": "Which embarkation port was the most common?",
+      "difficulty": "medium",
+      "expected_kind": "string",
+      "expected": "S",
+      "rel_tolerance": 0.01,
+      "abs_tolerance": 1e-09
+    }
+  ]
+}
