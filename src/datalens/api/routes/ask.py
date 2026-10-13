@@ -9,6 +9,8 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
+from datalens.api.auth import require_api_key
+from datalens.api.rate_limit import get_rate_limiter
 from datalens.api.schemas import AskRequest, AskResponse
 from datalens.db.models import Dataset, Run
 from datalens.db.models import Session as DSSession
@@ -23,8 +25,10 @@ router = APIRouter(tags=["ask"])
 def ask(
     request: AskRequest,
     db: Session = Depends(get_db_session),
+    api_key: str = Depends(require_api_key),
 ) -> AskResponse:
     """Run one single-turn question against a session's dataset."""
+    get_rate_limiter().check(api_key)
     session = db.get(DSSession, request.session_id)
     if session is None:
         raise HTTPException(

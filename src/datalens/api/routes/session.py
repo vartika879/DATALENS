@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
+from datalens.api.auth import require_api_key
+from datalens.api.rate_limit import get_rate_limiter
 from datalens.api.schemas import SessionCreateRequest, SessionCreateResponse
 from datalens.db.models import Dataset
 from datalens.db.models import Session as DSSession
@@ -17,8 +19,10 @@ router = APIRouter(tags=["session"])
 def create_session(
     request: SessionCreateRequest,
     db: Session = Depends(get_db_session),
+    api_key: str = Depends(require_api_key),
 ) -> SessionCreateResponse:
     """Create a conversation session against an existing dataset."""
+    get_rate_limiter().check(api_key)
     dataset = db.get(Dataset, request.dataset_id)
     if dataset is None:
         raise HTTPException(

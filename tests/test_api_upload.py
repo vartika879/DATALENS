@@ -26,7 +26,10 @@ def _in_memory_db(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(create_app())
+    return TestClient(
+        create_app(),
+        headers={"X-API-Key": "test-api-key-12345678"},
+    )
 
 
 def _csv_file(content: str, name: str = "test.csv") -> dict:

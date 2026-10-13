@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlmodel import Session
 
+from datalens.api.auth import require_api_key
+from datalens.api.rate_limit import get_rate_limiter
 from datalens.api.schemas import UploadResponse
 from datalens.db.models import Dataset
 from datalens.db.session import get_db_session
@@ -33,8 +35,10 @@ def _looks_like_text(content: bytes, sample_size: int = 4096) -> bool:
 async def upload_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db_session),
+    api_key: str = Depends(require_api_key),
 ) -> UploadResponse:
     """Accept a CSV, validate it, extract schema, and store the dataset."""
+    get_rate_limiter().check(api_key)
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

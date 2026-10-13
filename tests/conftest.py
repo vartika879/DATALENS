@@ -17,11 +17,9 @@ from datalens.config import get_settings
 
 @pytest.fixture(autouse=True)
 def _test_env(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Provide a dummy API key for unit tests; skip slow tests.
-
-    Slow tests need the real key from `.env`. Overriding it with a dummy
-    value causes 401 errors from the Groq API.
-    """
+    """Provide dummy API key + Groq key for tests; skip slow tests."""
+    monkeypatch.setenv("DATALENS_API_KEY", "test-api-key-12345678")
+    monkeypatch.setenv("DATALENS_RATE_LIMIT_PER_MINUTE", "60")
     if request.node.get_closest_marker("slow") is None:
         monkeypatch.setenv("GROQ_API_KEY", "test-key-not-used-mocked-in-tests")
     get_settings.cache_clear()

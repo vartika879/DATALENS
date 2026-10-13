@@ -29,6 +29,8 @@ class Settings(BaseSettings):
 
     groq_api_key: str = Field(..., min_length=10)
     use_sandbox: bool = False
+    datalens_api_key: str = Field(..., min_length=8)
+    datalens_rate_limit_per_minute: int = 60
 
 
 @lru_cache(maxsize=1)
