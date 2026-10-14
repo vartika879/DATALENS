@@ -19,7 +19,9 @@ from datalens.evals.aggregate import compute_summary
 from datalens.evals.compare import answers_match
 from datalens.evals.report import EvalReport, QuestionResult
 from datalens.evals.schema import GoldenDataset, GoldenQuestion
-from datalens.pipeline import PipelineResult, run_pipeline
+from datalens.pipeline import PipelineResult, run_conversation, run_pipeline
+from datalens.registry import register_dataset
+from datalens.session import create_session
 
 
 @dataclass
@@ -63,16 +65,65 @@ class EvalRunner:
         self.question_runner = question_runner or self._default_runner
 
     # --- Default runner -----------------------------------------------------
-
     def _default_runner(
         self, question: GoldenQuestion, df: pd.DataFrame, dataset_id: str
     ) -> RunOutcome:
-        """Run one question through the single-shot pipeline."""
+        """Run one question.
+
+        Adversarial questions go through the agent graph so that the
+        planner can refuse. Other questions use the faster single-shot
+        pipeline.
+        """
+        from datalens.evals.schema import AnswerKind, Difficulty
         from datalens.schema import extract_schema
 
         schema = extract_schema(self.csv_path)
-        result: PipelineResult = run_pipeline(schema, question.question, df)
 
+        # Adversarial → graph pipeline (planner refuses)
+        if (
+            question.difficulty == Difficulty.ADVERSARIAL
+            or question.expected_kind == AnswerKind.REFUSAL
+        ):
+            return self._run_via_graph(question, schema, df)
+
+        # Normal → single-shot
+        result: PipelineResult = run_pipeline(schema, question.question, df)
+        return self._pipeline_result_to_outcome(result)
+
+    def _run_via_graph(
+        self,
+        question: GoldenQuestion,
+        schema: object,
+        df: pd.DataFrame,
+    ) -> RunOutcome:
+        """Run a question through the LangGraph agent (planner + nodes)."""
+        did = register_dataset(df, schema, csv_path=self.csv_path)  # type: ignore[arg-type]
+        sid = create_session()
+        result = run_conversation(sid, did, question.question)
+
+        # Extract the "answer" text the agent produced. For refusals, this
+        # is the planner's final_answer. For successful runs, it's the
+        # summarizer's natural-language answer.
+        final = result.get("final_answer") or ""
+        status = result.get("execution_status", "success")
+        # If planner refused or clarify, execution_status won't be set.
+        if not status:
+            status = "success"
+
+        # Prefer structured result_data if present (numeric answers).
+        actual: object = final
+        if result.get("execution_status") == "success" and "result_data" in result:
+            actual = result["result_data"]
+
+        return RunOutcome(
+            status="success" if status != "error" else "error",
+            actual=actual,
+            retry_count=result.get("retry_count", 0),
+            latency_ms=result.get("total_duration_ms", 0.0),  # type: ignore[arg-type]
+        )
+
+    def _pipeline_result_to_outcome(self, result: PipelineResult) -> RunOutcome:
+        """Adapt a single-shot PipelineResult to a RunOutcome."""
         if result.status == "llm_error":
             return RunOutcome(
                 status="llm_error",
@@ -85,20 +136,16 @@ class EvalRunner:
         if result.status == "error":
             return RunOutcome(
                 status="error",
-                actual=None,
+                actual=result.error_message,
                 retry_count=0,
                 latency_ms=result.total_duration_ms,
                 error=result.error_message,
             )
 
-        # status == "success"
         actual = None
         if result.execution is not None:
             actual = result.execution.result_data
-            # For scalar result, result_data is the sanitized value directly.
-            # For strings, same. For lists (from DataFrame rows), handle below.
             if result.execution.result_type == "dataframe" and isinstance(actual, dict):
-                # A dataframe result — extract rows for list-like comparisons
                 actual = actual.get("rows")
             if result.execution.result_type == "series" and isinstance(actual, dict):
                 actual = actual.get("values")

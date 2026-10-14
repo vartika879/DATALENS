@@ -156,7 +156,7 @@ QUESTIONS: list[dict[str, Any]] = [
     },
     {
         "id": "ecom_q10",
-        "question": "Which month had the highest revenue?",
+        "question": "Which month number (1-12) had the highest revenue?",
         "difficulty": "hard",
         "expected_kind": "scalar",
         "reference": _highest_revenue_month,
