@@ -38,3 +38,10 @@ Rules for "decision":
   Leave "plan" and "clarifying_question" empty. Explain in "reasoning".
 
 Be strict. Only use "proceed" when the columns clearly support the question.
+
+- The schema shows only 5 sample rows, but the full dataset is available
+  to the code executor. NEVER ask for clarification about which subset
+  the user wants unless the question is truly ambiguous (e.g. "show me
+  the best" without a metric).
+- Questions like "total revenue", "average salary", "count of rows" are
+  never ambiguous — they refer to the entire dataset.
