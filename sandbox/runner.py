@@ -125,6 +125,16 @@ def _serialize_result(value: Any) -> tuple[str, Any]:
         return "series", _serialize_series(value)
     if value is None:
         return "none", None
+
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return "list", [_sanitize(v) for v in value]
+
+    if hasattr(value, "tolist") and hasattr(value, "dtype"):
+        try:
+            return "list", [_sanitize(v) for v in value.tolist()]
+        except Exception:
+            pass
+
     return "scalar", _sanitize(value)
 
 

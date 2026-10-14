@@ -181,3 +181,36 @@ def test_execute_code_sandbox_real(tmp_path, df):
     )
     assert result.status == "success"
     assert result.result_data == 1000
+
+
+# --- List result types ------------------------------------------------------
+
+
+def test_serialize_result_handles_python_list(df: pd.DataFrame) -> None:
+    result = execute_code("result = ['a', 'b', 'c']", df)
+    assert result.status == "success"
+    assert result.result_type == "list"
+    assert result.result_data == ["a", "b", "c"]
+
+
+def test_serialize_result_handles_unique_array(df: pd.DataFrame) -> None:
+    """df['city'].unique() returns numpy array (or ExtensionArray)."""
+    result = execute_code("result = df['city'].unique().tolist()", df)
+    assert result.status == "success"
+    assert result.result_type == "list"
+    assert sorted(result.result_data) == ["Bangalore", "Delhi", "Mumbai"]
+
+
+def test_serialize_result_handles_unique_without_tolist(df: pd.DataFrame) -> None:
+    """Direct .unique() returns array-like; serializer must convert."""
+    result = execute_code("result = df['city'].unique()", df)
+    assert result.status == "success"
+    assert result.result_type == "list"
+    assert sorted(result.result_data) == ["Bangalore", "Delhi", "Mumbai"]
+
+
+def test_serialize_result_handles_numpy_array(df: pd.DataFrame) -> None:
+    result = execute_code("result = df['sales'].values", df)
+    assert result.status == "success"
+    assert result.result_type == "list"
+    assert result.result_data == [100, 200, 150, 300, 250]

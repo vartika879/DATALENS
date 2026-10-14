@@ -116,13 +116,34 @@ def _serialize_series(series: pd.Series) -> dict[str, Any]:
 
 
 def _serialize_result(value: Any) -> tuple[str, Any]:
-    """Return (result_type, result_data) for an arbitrary result value."""
+    """Return (result_type, result_data) for an arbitrary result value.
+
+    Handles:
+    - DataFrame / Series → structured dict
+    - None → "none"
+    - list / tuple / numpy array → "list" with sanitized elements
+    - pandas extension arrays (ArrowStringArray, Categorical) → "list"
+    - scalars → "scalar"
+    """
     if isinstance(value, pd.DataFrame):
         return "dataframe", _serialize_dataframe(value)
     if isinstance(value, pd.Series):
         return "series", _serialize_series(value)
     if value is None:
         return "none", None
+
+    # Python sequences and numpy arrays → list
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return "list", [sanitize_for_json(v) for v in value]
+
+    # pandas extension arrays (ArrowStringArray, Categorical, etc.) expose
+    # .tolist() and .dtype but are not Series. Convert to list.
+    if hasattr(value, "tolist") and hasattr(value, "dtype"):
+        try:
+            return "list", [sanitize_for_json(v) for v in value.tolist()]
+        except Exception:  # noqa: BLE001 — fall through to scalar
+            pass
+
     return "scalar", sanitize_for_json(value)
 
 
