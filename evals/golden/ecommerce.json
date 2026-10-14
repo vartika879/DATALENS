@@ -91,7 +91,7 @@
     },
     {
       "id": "ecom_q10",
-      "question": "Which month had the highest revenue?",
+      "question": "Which month number (1-12) had the highest revenue?",
       "difficulty": "hard",
       "expected_kind": "scalar",
       "expected": 6,

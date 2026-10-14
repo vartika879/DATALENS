@@ -65,27 +65,16 @@ def run_pipeline(
         execution=execution,
         total_duration_ms=total_ms,
     )
-
-
 def run_conversation(
     session_id: str,
     dataset_id: str,
     question: str,
 ) -> dict:
     """Run one turn of the agentic conversation and persist the turn.
-
-    This is the primary entry point for the multi-turn UI. It builds the
-    graph, invokes it, and appends the turn to the session if a final answer
-    was produced.
-
-    Args:
-        session_id: Active session (created via `session.create_session`).
-        dataset_id: Registered dataset (via `registry.register_dataset`).
-        question: The user's question for this turn.
-
-    Returns:
-        The final AgentState dict after the graph finishes.
+    ...
     """
+    started = time.perf_counter()
+
     app = build_agent_graph()
     result = app.invoke(
         {
@@ -94,6 +83,10 @@ def run_conversation(
             "question": question,
         }
     )
+
+    # Attach wall-clock timing to the result so callers (eval runner,
+    # API, UI) can report honest latency.
+    result["total_duration_ms"] = (time.perf_counter() - started) * 1000.0
 
     final = result.get("final_answer")
     if final:
