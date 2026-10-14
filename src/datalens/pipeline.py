@@ -6,6 +6,9 @@ without knowing the individual pieces.
 """
 
 from __future__ import annotations
+from datalens.logging_config import get_logger
+
+log = get_logger("datalens.pipeline")
 
 import time
 from dataclasses import dataclass
@@ -36,6 +39,7 @@ def run_pipeline(
     df: pd.DataFrame,
 ) -> PipelineResult:
     """Run the full pipeline for one question."""
+    log.info("pipeline.started", question_length=len(question))
     started = time.perf_counter()
 
     try:
@@ -58,6 +62,11 @@ def run_pipeline(
             error_message=execution.error_message,
             total_duration_ms=total_ms,
         )
+        log.info(
+        "pipeline.completed",
+        status=status,
+        total_ms=round(total_ms, 1),
+    )
 
     return PipelineResult(
         status="success",

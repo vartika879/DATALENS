@@ -17,10 +17,14 @@ from datalens import __version__
 from datalens.api.routes import ask, feedback, health, history, session, upload
 from datalens.db.engine import create_db_and_tables
 
+from datalens.logging_config import configure_logging
+
+
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Ensure DB tables exist on startup."""
+    configure_logging()
     create_db_and_tables()
     yield
 

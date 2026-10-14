@@ -6,6 +6,12 @@ here so the rest of the codebase depends only on ``generate_code``.
 
 from __future__ import annotations
 
+
+from datalens.logging_config import get_logger
+
+log = get_logger("datalens.llm")
+
+
 from pathlib import Path
 from typing import Literal
 
@@ -95,7 +101,7 @@ def plan_question(
     if history:
         history_text = "\n".join(f"- Q: {t['question']}\n  A: {t['answer']}" for t in history)
         user_prompt = f"Conversation history:\n{history_text}\n\n{user_prompt}"
-
+    log.info("llm.call.started", fn="generate_code", model=model)
     try:
         response = client.chat.completions.create(
             model=model,
@@ -107,8 +113,9 @@ def plan_question(
             response_format={"type": "json_object"},
         )
     except Exception as exc:  # noqa: BLE001
+        log.error("llm.call.failed", fn="generate_code", error=str(exc))
         raise LLMError(f"Groq API call failed: {exc}") from exc
-
+    log.info("llm.call.completed", fn="generate_code")
     if not response.choices:
         raise LLMError("LLM returned no choices")
 

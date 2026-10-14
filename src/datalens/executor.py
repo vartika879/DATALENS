@@ -20,6 +20,11 @@ rejects obvious attacks before spawning a container or calling ``exec``.
 
 from __future__ import annotations
 
+
+from datalens.logging_config import get_logger
+
+log = get_logger("datalens.executor")
+
 import time
 import traceback
 from dataclasses import dataclass
@@ -201,6 +206,11 @@ def execute_code(
     Returns:
         ExecutionResult.
     """
+    log.info(
+        "executor.started",
+        use_sandbox=use_sandbox,
+        code_length=len(code),
+    )
     # --- Sandbox path (real isolation) --------------------------------------
     if use_sandbox:
         if csv_path is None:
@@ -300,4 +310,9 @@ def execute_code(
         result_repr=_format_repr(raw),
         result_data=result_data,
         duration_ms=(time.perf_counter() - started) * 1000.0,
+    )
+    log.info(
+        "executor.completed",
+        result_type=result_type,
+        duration_ms=round(result.duration_ms, 1),
     )
