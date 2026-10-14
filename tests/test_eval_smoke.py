@@ -79,10 +79,7 @@ def test_full_eval_pipeline_with_partial_mock(
 
     def half_runner(question, df, dataset_id) -> RunOutcome:
         # First question wrong; rest correct.
-        if question.id == first_id:
-            actual = "definitely wrong"
-        else:
-            actual = by_id[question.id].expected
+        actual = "definitely wrong" if question.id == first_id else by_id[question.id].expected
         return RunOutcome(
             status="success",
             actual=actual,
