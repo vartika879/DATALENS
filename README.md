@@ -1,8 +1,8 @@
 # DataLens
 
 > Ask questions about your CSV in plain English. DataLens generates pandas code, executes it in a restricted environment, and returns the answer — with the code and explanation shown transparently.
-
-[![tests](https://img.shields.io/badge/tests-51%20passing-brightgreen)](#testing)
+[![CI](https://github.com/vartika879/DATALENS/actions/workflows/ci.yml/badge.svg)](https://github.com/vartika879/DATALENS/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-258%20passing-brightgreen)](#testing)
 [![python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](#license)
 [![status](https://img.shields.io/badge/status-phase%201%20of%208-orange)](#roadmap)
