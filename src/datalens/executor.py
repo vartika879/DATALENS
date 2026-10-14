@@ -1,28 +1,10 @@
 """Execute LLM-generated pandas code against a DataFrame.
 
-SECURITY NOTES
---------------
-Two execution paths are supported:
-
-1. **Direct exec** (``use_sandbox=False``, default): Uses Python's built-in
-   ``exec`` with a restricted ``__builtins__`` dict. This is NOT a security
-   boundary. It stops accidental ``import``/``open`` calls but can be
-   escaped via object introspection.
-
-2. **Docker sandbox** (``use_sandbox=True``): Dispatches to
-   ``datalens.sandbox.run_in_sandbox`` for real isolation (no network,
-   resource limits, read-only filesystem, non-root user).
-
-Both paths run an AST static check first (``datalens.ast_check``). The AST
-check is a cheap first layer — it is NOT a security boundary either, but it
-rejects obvious attacks before spawning a container or calling ``exec``.
+Two execution paths: direct exec (dev) and Docker sandbox (production).
+Both run AST checks first. See `datalens.ast_check` and `datalens.sandbox`.
 """
 
 from __future__ import annotations
-
-from datalens.logging_config import get_logger
-
-log = get_logger("datalens.executor")
 
 import time
 import traceback
@@ -34,8 +16,11 @@ import numpy as np
 import pandas as pd
 
 from datalens.ast_check import ASTCheckError, assert_code_is_safe
+from datalens.logging_config import get_logger
 from datalens.sandbox import SandboxResult, run_in_sandbox
 from datalens.serialization import sanitize_for_json
+
+log = get_logger("datalens.executor")
 
 # --- Limits -----------------------------------------------------------------
 
@@ -299,19 +284,20 @@ def execute_code(
             error_traceback=None,
             duration_ms=(time.perf_counter() - started) * 1000.0,
         )
-
     raw = sandbox["result"]
     result_type, result_data = _serialize_result(raw)
+    duration_ms = (time.perf_counter() - started) * 1000.0
+
+    log.info(
+        "executor.completed",
+        result_type=result_type,
+        duration_ms=round(duration_ms, 1),
+    )
 
     return ExecutionResult(
         status="success",
         result_type=result_type,
         result_repr=_format_repr(raw),
         result_data=result_data,
-        duration_ms=(time.perf_counter() - started) * 1000.0,
-    )
-    log.info(
-        "executor.completed",
-        result_type=result_type,
-        duration_ms=round(result.duration_ms, 1),
+        duration_ms=duration_ms,
     )

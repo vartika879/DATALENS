@@ -270,7 +270,7 @@ def _build_summarizer_user_prompt(
     )
 
 
-# --- Internals: build the two call closures ---------------------------------
+# --- Call plumbing ----------------------------------------------------------
 
 
 def _build_call_pair(

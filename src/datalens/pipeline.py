@@ -7,10 +7,6 @@ without knowing the individual pieces.
 
 from __future__ import annotations
 
-from datalens.logging_config import get_logger
-
-log = get_logger("datalens.pipeline")
-
 import time
 from dataclasses import dataclass
 
@@ -19,8 +15,11 @@ import pandas as pd
 from datalens.agent.graph import build_agent_graph
 from datalens.executor import ExecutionResult, execute_code
 from datalens.llm import GeneratedCode, LLMError, generate_code
+from datalens.logging_config import get_logger
 from datalens.schema import DatasetSchema
 from datalens.session import append_turn
+
+log = get_logger("datalens.pipeline")
 
 
 @dataclass
@@ -55,7 +54,20 @@ def run_pipeline(
     execution = execute_code(generated.code, df)
     total_ms = (time.perf_counter() - started) * 1000.0
 
+    status = "error" if execution.status == "error" else "success"
+    log.info(
+        "pipeline.completed",
+        status=status,
+        total_ms=round(total_ms, 1),
+    )
+
     if execution.status == "error":
+        total_ms = (time.perf_counter() - started) * 1000.0
+        log.info(
+            "pipeline.completed",
+            status=status,
+            total_ms=round(total_ms, 1),
+        )
         return PipelineResult(
             status="error",
             generated=generated,
@@ -63,6 +75,7 @@ def run_pipeline(
             error_message=execution.error_message,
             total_duration_ms=total_ms,
         )
+        total_ms = (time.perf_counter() - started) * 1000.0
         log.info(
             "pipeline.completed",
             status=status,

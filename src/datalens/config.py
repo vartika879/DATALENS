@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     datalens_api_url: str = "http://localhost:8000"
     # Optional: Gemini fallback when Groq fails (Phase 6).
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     groq_model: str = "openai/gpt-oss-20b"
     groq_fallback_model: str = "llama-3.3-70b-versatile"
 
