@@ -90,12 +90,35 @@ def answers_match(
         if got == want:
             return True, ""
         return False, f"list mismatch: {got!r} vs {want!r}"
-
     if kind is AnswerKind.BOOL:
         if not isinstance(actual, bool):
             return False, f"expected bool, got {type(actual).__name__}"
         if actual is expected:
             return True, ""
         return False, f"bool mismatch: {actual!r} vs {expected!r}"
+
+    if kind is AnswerKind.REFUSAL:
+        # Adversarial: the agent is expected to refuse. Pass if the actual
+        # answer contains any common refusal marker.
+        if not isinstance(actual, str):
+            return False, f"expected refusal string, got {type(actual).__name__}"
+        text = actual.strip().lower()
+        markers = (
+            "no ",
+            "not ",
+            "cannot",
+            "can't",
+            "doesn't",
+            "does not",
+            "unavailable",
+            "not available",
+            "not present",
+            "not in the dataset",
+            "no such column",
+            "column not found",
+        )
+        if any(m in text for m in markers):
+            return True, ""
+        return False, f"no refusal marker in: {actual!r}"
 
     return False, f"unsupported answer kind: {kind}"

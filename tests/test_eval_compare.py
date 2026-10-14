@@ -120,3 +120,29 @@ def test_custom_tolerance() -> None:
     # With very tight tolerance, this should fail
     ok, _ = answers_match(57501, 57500, kind=AnswerKind.SCALAR, rel_tolerance=1e-6)
     assert not ok
+
+
+# --- Refusal ----------------------------------------------------------------
+
+
+def test_refusal_accepts_common_markers() -> None:
+    for text in [
+        "no profit column available",
+        "The dataset doesn't have a profit column.",
+        "I cannot answer this question.",
+        "This column is not in the dataset.",
+        "Not available in the provided schema.",
+    ]:
+        ok, _ = answers_match(text, "no profit column available", kind=AnswerKind.REFUSAL)
+        assert ok, f"expected refusal match: {text!r}"
+
+
+def test_refusal_rejects_numeric_answer() -> None:
+    ok, _ = answers_match("1000", "no profit column available", kind=AnswerKind.REFUSAL)
+    assert not ok
+
+
+def test_refusal_rejects_non_string() -> None:
+    ok, reason = answers_match(42, "no profit column available", kind=AnswerKind.REFUSAL)
+    assert not ok
+    assert "expected refusal string" in reason

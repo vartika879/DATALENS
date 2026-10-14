@@ -180,7 +180,7 @@ QUESTIONS: list[dict[str, Any]] = [
         "id": "census_q15",
         "question": "What is the profit margin per state?",
         "difficulty": "adversarial",
-        "expected_kind": "string",
+        "expected_kind": "refusal",
         "reference": _profit_margin,
         "notes": "Adversarial: dataset has no profit column; agent should refuse.",
     },

@@ -24,10 +24,11 @@ class Difficulty(StrEnum):
 class AnswerKind(StrEnum):
     """Shape of the expected answer."""
 
-    SCALAR = "scalar"  # int or float
+    SCALAR = "scalar"
     STRING = "string"
-    LIST = "list"  # order-independent after sorting
+    LIST = "list"
     BOOL = "bool"
+    REFUSAL = "refusal"  # adversarial: agent must refuse or say "no such column"
 
 
 class GoldenQuestion(BaseModel):

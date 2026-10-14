@@ -139,7 +139,7 @@
       "id": "ecom_q15",
       "question": "What is the total profit from all orders?",
       "difficulty": "adversarial",
-      "expected_kind": "string",
+      "expected_kind": "refusal",
       "expected": "no profit column available",
       "rel_tolerance": 0.01,
       "abs_tolerance": 1e-09,

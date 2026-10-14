@@ -195,7 +195,7 @@ QUESTIONS: list[dict[str, Any]] = [
         "id": "ecom_q15",
         "question": "What is the total profit from all orders?",
         "difficulty": "adversarial",
-        "expected_kind": "string",
+        "expected_kind": "refusal",
         "reference": lambda df: "no profit column available",
         "notes": "Adversarial: dataset has no profit column; agent should refuse.",
     },
