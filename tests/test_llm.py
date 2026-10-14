@@ -196,7 +196,7 @@ def test_generate_code_wraps_api_errors(sample_schema: DatasetSchema) -> None:
     client = MagicMock()
     client.chat.completions.create.side_effect = RuntimeError("network boom")
 
-    with pytest.raises(LLMError, match="Groq API call failed"):
+    with pytest.raises(LLMError, match="LLM call failed"):
         generate_code(sample_schema, "any", client=client)
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from io import StringIO
 
 from datalens.logging_config import configure_logging, get_logger
 

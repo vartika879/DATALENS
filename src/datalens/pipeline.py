@@ -6,6 +6,7 @@ without knowing the individual pieces.
 """
 
 from __future__ import annotations
+
 from datalens.logging_config import get_logger
 
 log = get_logger("datalens.pipeline")
@@ -63,10 +64,10 @@ def run_pipeline(
             total_duration_ms=total_ms,
         )
         log.info(
-        "pipeline.completed",
-        status=status,
-        total_ms=round(total_ms, 1),
-    )
+            "pipeline.completed",
+            status=status,
+            total_ms=round(total_ms, 1),
+        )
 
     return PipelineResult(
         status="success",

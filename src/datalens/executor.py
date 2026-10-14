@@ -20,7 +20,6 @@ rejects obvious attacks before spawning a container or calling ``exec``.
 
 from __future__ import annotations
 
-
 from datalens.logging_config import get_logger
 
 log = get_logger("datalens.executor")
