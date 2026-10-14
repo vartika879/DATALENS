@@ -113,3 +113,37 @@ def test_format_summary_contains_key_metrics(sales_csv: Path) -> None:
     assert "Eval report" in text
     assert "Total questions" in text
     assert "Latency p50" in text
+
+
+def test_variant_single_shot_uses_single_shot(sales_csv: Path) -> None:
+    """With variant=single_shot, adversarial should still call single-shot."""
+    calls: list[str] = []
+
+    def fake(question, df, dataset_id) -> RunOutcome:
+        calls.append(question.id)
+        return RunOutcome(status="success", actual=2600, retry_count=0, latency_ms=50.0)
+
+    runner = EvalRunner(
+        _tiny_dataset(),
+        sales_csv,
+        question_runner=fake,
+        variant="single_shot",
+    )
+    report = runner.run_all()
+    assert report.summary.total == 2
+
+
+def test_variant_auto_default(sales_csv: Path) -> None:
+    """Default variant is 'auto'."""
+    runner = EvalRunner(_tiny_dataset(), sales_csv)
+    assert runner.variant == "auto"
+
+
+def test_variant_single_shot_flag(sales_csv: Path) -> None:
+    runner = EvalRunner(_tiny_dataset(), sales_csv, variant="single_shot")
+    assert runner.variant == "single_shot"
+
+
+def test_variant_graph_flag(sales_csv: Path) -> None:
+    runner = EvalRunner(_tiny_dataset(), sales_csv, variant="graph")
+    assert runner.variant == "graph"

@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 
@@ -58,10 +59,12 @@ class EvalRunner:
         dataset: GoldenDataset,
         csv_path: Path,
         question_runner: QuestionRunner | None = None,
+        variant: Literal["auto", "single_shot", "graph"] = "auto",
     ) -> None:
         self.dataset = dataset
         self.csv_path = csv_path
         self.df = pd.read_csv(csv_path)
+        self.variant = variant
         self.question_runner = question_runner or self._default_runner
 
     # --- Default runner -----------------------------------------------------
@@ -80,14 +83,22 @@ class EvalRunner:
         schema = extract_schema(self.csv_path)
 
         # Adversarial → graph pipeline (planner refuses)
+        # Variant override: force one mode for all questions.
+        if self.variant == "single_shot":
+            result = run_pipeline(schema, question.question, df)
+            return self._pipeline_result_to_outcome(result)
+
+        if self.variant == "graph":
+            return self._run_via_graph(question, schema, df)
+
+        # Auto: adversarial → graph, otherwise single-shot.
         if (
             question.difficulty == Difficulty.ADVERSARIAL
             or question.expected_kind == AnswerKind.REFUSAL
         ):
             return self._run_via_graph(question, schema, df)
 
-        # Normal → single-shot
-        result: PipelineResult = run_pipeline(schema, question.question, df)
+        result = run_pipeline(schema, question.question, df)
         return self._pipeline_result_to_outcome(result)
 
     def _run_via_graph(
@@ -159,10 +170,51 @@ class EvalRunner:
 
     # --- Public API ---------------------------------------------------------
 
+    def _call_with_retry(
+        self,
+        fn: Callable[[], RunOutcome],
+        max_retries: int = 3,
+        base_delay: float = 5.0,
+    ) -> RunOutcome:
+        """Call a runner function with exponential backoff on rate limits.
+
+        Detects rate limit errors by inspecting the error message for
+        common markers ("429", "rate limit", "too many requests"). Sleeps
+        base_delay, 2*base_delay, 4*base_delay between attempts.
+        """
+        import time as _time
+
+        last_outcome: RunOutcome | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                outcome = fn()
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc).lower()
+                if (
+                    any(m in msg for m in ("429", "rate limit", "too many"))
+                    and attempt < max_retries
+                ):
+                    _time.sleep(base_delay * (2**attempt))
+                    continue
+                raise
+            err = (outcome.error or "").lower()
+            if any(m in err for m in ("429", "rate limit", "too many")):
+                last_outcome = outcome
+                if attempt < max_retries:
+                    _time.sleep(base_delay * (2**attempt))
+                    continue
+
+            return outcome
+
+        assert last_outcome is not None
+        return last_outcome
+
     def run_question(self, question: GoldenQuestion) -> QuestionResult:
         """Run one golden question and evaluate correctness."""
         try:
-            outcome = self.question_runner(question, self.df, self.dataset.name)
+            outcome = self._call_with_retry(
+                lambda: self.question_runner(question, self.df, self.dataset.name)
+            )
         except Exception as exc:  # noqa: BLE001 — surface as failure
             return QuestionResult(
                 question_id=question.id,
@@ -207,8 +259,17 @@ class EvalRunner:
     def run_all(
         self,
         progress: Callable[[int, int, QuestionResult], None] | None = None,
+        delay_seconds: float = 0.0,
     ) -> EvalReport:
-        """Run every question and return a complete report."""
+        """Run every question and return a complete report.
+
+        Args:
+            progress: Optional callback for live progress.
+            delay_seconds: Sleep between questions. Useful when hitting
+                provider rate limits during ablation runs.
+        """
+        import time as _time
+
         results: list[QuestionResult] = []
         total = len(self.dataset.questions)
         for i, q in enumerate(self.dataset.questions, start=1):
@@ -216,6 +277,8 @@ class EvalRunner:
             results.append(r)
             if progress:
                 progress(i, total, r)
+            if delay_seconds > 0 and i < total:
+                _time.sleep(delay_seconds)
 
         return EvalReport(
             dataset_name=self.dataset.name,

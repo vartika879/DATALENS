@@ -38,7 +38,9 @@ def _progress(i: int, total: int, r: QuestionResult) -> None:
     print(f"[{i:>3}/{total}] {mark}  {r.question_id:<15}{r.latency_ms:>6.0f} ms  {r.question[:60]}")
 
 
-def _run_one(name: str, limit: int | None = None) -> None:
+def _run_one(
+    name: str, limit: int | None = None, variant: str = "auto", delay_seconds: float = 0.0
+) -> None:
     golden_path = GOLDEN_DIR / f"{name}.json"
     dataset = load_golden_dataset(golden_path)
 
@@ -47,11 +49,12 @@ def _run_one(name: str, limit: int | None = None) -> None:
 
     csv_path = FIXTURES_DIR / dataset.csv_filename
     print(f"Running eval: {dataset.name} ({len(dataset.questions)} questions)")
+    print(f"Variant: {variant}")
     print(f"CSV: {csv_path}")
     print()
 
-    runner = EvalRunner(dataset=dataset, csv_path=csv_path)
-    report = runner.run_all(progress=_progress)
+    runner = EvalRunner(dataset=dataset, csv_path=csv_path, variant=variant)
+    report = runner.run_all(progress=_progress, delay_seconds=delay_seconds)
 
     print(format_summary(report))
     out = write_report(report, REPORTS_DIR)
@@ -63,8 +66,19 @@ def main() -> None:
     parser.add_argument("dataset", nargs="?", help="Dataset name (sales, titanic, ...)")
     parser.add_argument("--all", action="store_true", help="Run all datasets")
     parser.add_argument("--limit", type=int, default=None, help="Run only the first N questions")
+    parser.add_argument(
+        "--variant",
+        choices=["auto", "single_shot", "graph"],
+        default="auto",
+        help="Which pipeline variant to run (default: auto).",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=0.0,
+        help="Seconds to sleep between questions (for rate limits).",
+    )
     args = parser.parse_args()
-
     if args.all:
         names = ["sales", "titanic", "ecommerce", "census"]
     elif args.dataset:
@@ -73,7 +87,7 @@ def main() -> None:
         parser.error("Pass a dataset name or --all")
 
     for name in names:
-        _run_one(name, limit=args.limit)
+        _run_one(name, limit=args.limit, variant=args.variant, delay_seconds=args.delay)
 
 
 if __name__ == "__main__":
