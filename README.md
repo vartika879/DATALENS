@@ -198,6 +198,34 @@ Reproducibility. `git clone && docker compose run --rm test` works on any machin
 
 ---
 
+#### 3. README update
+
+`README.md` me jahan "Roadmap" section hai uske just upar ye add karo:
+
+```markdown
+## Evaluation
+
+DataLens ships with a golden dataset of **50 verified questions**
+across 4 CSV datasets (sales, titanic, ecommerce, census). Accuracy is
+measured, not claimed.
+
+**Latest results:**
+
+| Variant | Accuracy | Latency (p50) |
+|---|---|---|
+| Single-shot pipeline | 96% (48/50) | ~2.4 s |
+| Full agent graph | 100% (50/50) | ~11 s |
+
+The graph is safer on adversarial inputs (refuses instead of
+hallucinating) at ~4-5x the latency. See `docs/evaluation.md` for
+methodology and `docs/ablation_results.md` for the full analysis.
+
+Run evals locally:
+
+```bash
+uv run python evals/build_golden.py
+uv run python evals/run_eval.py --all
+
 ## Roadmap
 
 - [x] **Phase 0** — Project setup, Docker, tooling, tests
